@@ -73,31 +73,27 @@
             </div>
         </div>
 
-        <!-- Input form -->
+        <!-- Input form — plain HTML form, submitted via fetch() not HTMX
+             (HTMX clears the textarea in before-request before it reads the value) -->
         <div class="border-t border-gray-200 bg-white px-5 py-3">
-            <form
-                id="chat-form"
-                hx-post="/projects/{{ project.id }}/chat"
-                hx-encoding="application/x-www-form-urlencoded"
-                hx-on::before-request="onSubmit()"
-                class="flex gap-2"
-            >
+            <form id="chat-form" class="flex gap-2" @submit.prevent="submitMessage()">
                 <textarea
                     id="message-input"
                     name="content"
                     rows="1"
-                    placeholder="Type your message..."
-                    required
+                    placeholder="Type your message... (Enter to send)"
                     class="flex-1 border border-gray-300 rounded-xl px-4 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    @keydown.enter.exact.prevent="$el.closest('form').requestSubmit()"
+                    @keydown.enter.exact.prevent="submitMessage()"
                     @input="autoResize($event.target)"
                 ></textarea>
                 <button
                     type="submit"
                     id="send-btn"
-                    class="bg-blue-600 text-white px-4 py-2 rounded-xl hover:bg-blue-700 transition text-sm"
+                    :disabled="sending"
+                    class="bg-blue-600 text-white px-4 py-2 rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition text-sm"
                 >
-                    Send
+                    <span x-show="!sending">Send</span>
+                    <span x-show="sending">…</span>
                 </button>
             </form>
         </div>
@@ -121,57 +117,123 @@
 </div>
 
 <script>
+const PROJECT_ID = "{{ project.id }}";
+
 function planningSession() {
     return {
         activePersona: 'ba',
+        sending: false,
         personaLabels: {
-            ba: '🔍 Business Analyst',
-            pm: '📋 Product Manager',
+            ba:        '🔍 Business Analyst',
+            pm:        '📋 Product Manager',
             architect: '🏗️ Architect',
-            tdd: '✅ TDD Tester',
+            tdd:       '✅ TDD Tester',
         },
 
-        onSubmit() {
+        async submitMessage() {
+            if (this.sending) return;
             const input = document.getElementById('message-input');
             const content = input.value.trim();
             if (!content) return;
 
-            // Append user message immediately
-            appendMessage('user', content);
+            // Capture value FIRST, then clear
+            this.sending = true;
             input.value = '';
             input.style.height = 'auto';
 
-            // Show typing indicator
+            // Render user bubble immediately
+            appendMessage('user', content);
             document.getElementById('typing-indicator').classList.remove('hidden');
 
-            // Set up SSE listener for the response
-            this.listenForResponse();
+            try {
+                await this.streamChat(content);
+            } catch (err) {
+                console.error('Chat error:', err);
+                appendMessage('assistant', '⚠️ Something went wrong. Please try again.');
+            } finally {
+                this.sending = false;
+                document.getElementById('typing-indicator').classList.add('hidden');
+                // Remove streaming bubble marker so next reply starts fresh
+                const prev = document.getElementById('streaming-bubble');
+                if (prev) prev.removeAttribute('id');
+            }
         },
 
-        listenForResponse() {
-            // Response arrives via SSE from /projects/{id}/chat POST
-            // HTMX handles the POST; we set up a listener for custom events
-            const self = this;
-
-            document.body.addEventListener('htmx:sseMessage', function handler(e) {
-                const event = e.detail.event;
-                const data = JSON.parse(e.detail.data || '{}');
-
-                if (event === 'token') {
-                    self.appendToken(data.content);
-                } else if (event === 'tool_used') {
-                    // Refresh knowledge panel
-                    htmx.trigger('#knowledge-panel', 'load');
-                } else if (event === 'done') {
-                    self.activePersona = data.persona || 'ba';
-                    document.getElementById('typing-indicator').classList.add('hidden');
-                    document.body.removeEventListener('htmx:sseMessage', handler);
-                }
+        async streamChat(content) {
+            const response = await fetch(`/projects/${PROJECT_ID}/chat`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: `content=${encodeURIComponent(content)}`,
             });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            // Read the SSE stream manually
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+
+                // SSE messages are separated by double newlines
+                const parts = buffer.split('\n\n');
+                buffer = parts.pop(); // keep the incomplete trailing chunk
+
+                for (const part of parts) {
+                    this.handleSseBlock(part);
+                }
+            }
+
+            // Handle any remaining data
+            if (buffer.trim()) this.handleSseBlock(buffer);
+        },
+
+        handleSseBlock(block) {
+            // Parse a single SSE block: one or more "field: value" lines
+            let eventName = 'message';
+            let dataStr = '';
+
+            for (const line of block.split('\n')) {
+                if (line.startsWith('event: ')) {
+                    eventName = line.slice(7).trim();
+                } else if (line.startsWith('data: ')) {
+                    dataStr = line.slice(6).trim();
+                }
+            }
+
+            if (!dataStr) return;
+
+            let data = {};
+            try { data = JSON.parse(dataStr); } catch { return; }
+
+            switch (eventName) {
+                case 'token':
+                    this.appendToken(data.content || '');
+                    break;
+                case 'tool_used':
+                    // Refresh knowledge panel via HTMX
+                    htmx.ajax('GET', `/projects/${PROJECT_ID}/knowledge-panel`, {
+                        target: '#knowledge-panel',
+                        swap: 'innerHTML',
+                    });
+                    break;
+                case 'done':
+                    this.activePersona = data.persona || 'ba';
+                    document.getElementById('typing-indicator').classList.add('hidden');
+                    break;
+                case 'error':
+                    appendMessage('assistant', `⚠️ ${data.message || 'Unknown error'}`);
+                    break;
+            }
         },
 
         appendToken(text) {
-            // Find or create the current streaming message bubble
             let bubble = document.getElementById('streaming-bubble');
             if (!bubble) {
                 const wrapper = createMessageWrapper('assistant');
@@ -195,9 +257,6 @@ function appendMessage(role, content) {
     const wrapper = createMessageWrapper(role);
     wrapper.querySelector('.message-content').textContent = content;
     document.getElementById('messages').appendChild(wrapper);
-    // Remove any previous streaming bubble ID so next response starts fresh
-    const prev = document.getElementById('streaming-bubble');
-    if (prev) prev.removeAttribute('id');
     scrollToBottom();
 }
 
