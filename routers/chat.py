@@ -48,7 +48,10 @@ async def send_message(
 
         try:
             async for chunk in stream_response(project_id, history, db):
-                if chunk["type"] == "text":
+                if chunk["type"] == "thinking":
+                    yield _sse("thinking", {"content": chunk["content"]})
+
+                elif chunk["type"] == "text":
                     assistant_text.append(chunk["content"])
                     yield _sse("token", {"content": chunk["content"]})
 

@@ -153,9 +153,13 @@ function planningSession() {
             } finally {
                 this.sending = false;
                 document.getElementById('typing-indicator').classList.add('hidden');
-                // Remove streaming bubble marker so next reply starts fresh
+                // Remove per-turn markers so next reply starts fresh
                 const prev = document.getElementById('streaming-bubble');
                 if (prev) prev.removeAttribute('id');
+                const prevThinking = document.getElementById('thinking-content');
+                if (prevThinking) prevThinking.removeAttribute('id');
+                const prevWrapper = document.getElementById('thinking-wrapper');
+                if (prevWrapper) prevWrapper.removeAttribute('id');
             }
         },
 
@@ -213,11 +217,13 @@ function planningSession() {
             try { data = JSON.parse(dataStr); } catch { return; }
 
             switch (eventName) {
+                case 'thinking':
+                    this.appendThinking(data.content || '');
+                    break;
                 case 'token':
                     this.appendToken(data.content || '');
                     break;
                 case 'tool_used':
-                    // Refresh knowledge panel via HTMX
                     htmx.ajax('GET', `/projects/${PROJECT_ID}/knowledge-panel`, {
                         target: '#knowledge-panel',
                         swap: 'innerHTML',
@@ -233,7 +239,41 @@ function planningSession() {
             }
         },
 
+        appendThinking(text) {
+            let content = document.getElementById('thinking-content');
+            if (!content) {
+                // Create the thinking block on first thinking token
+                const wrapper = document.createElement('div');
+                wrapper.id = 'thinking-wrapper';
+                wrapper.className = 'flex gap-3';
+                wrapper.innerHTML = `
+                    <div class="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-xs shrink-0 mt-0.5">💭</div>
+                    <div class="flex-1 max-w-xl min-w-0">
+                        <details open class="group">
+                            <summary class="text-xs text-gray-400 cursor-pointer select-none list-none flex items-center gap-1 mb-1">
+                                <span class="group-open:rotate-90 transition-transform inline-block">▶</span>
+                                <span>Thinking…</span>
+                            </summary>
+                            <div id="thinking-content"
+                                 class="bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 text-xs text-gray-500 font-mono whitespace-pre-wrap max-h-52 overflow-y-auto leading-relaxed"></div>
+                        </details>
+                    </div>`;
+                document.getElementById('messages').appendChild(wrapper);
+                document.getElementById('typing-indicator').classList.add('hidden');
+                content = document.getElementById('thinking-content');
+            }
+            content.textContent += text;
+            scrollToBottom();
+        },
+
         appendToken(text) {
+            // Collapse thinking block the moment the real reply starts
+            const thinkingWrapper = document.getElementById('thinking-wrapper');
+            if (thinkingWrapper && !document.getElementById('streaming-bubble')) {
+                const details = thinkingWrapper.querySelector('details');
+                if (details) details.removeAttribute('open');
+            }
+
             let bubble = document.getElementById('streaming-bubble');
             if (!bubble) {
                 const wrapper = createMessageWrapper('assistant');

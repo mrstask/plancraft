@@ -288,8 +288,13 @@ async def stream_response(
     """
     Stream the LLM response and dispatch any tool calls to the knowledge model.
 
+    Gemma4 wraps chain-of-thought in <think>…</think> tags at the start of
+    its response. We split that out into separate chunk types so the UI can
+    render thinking and reply content differently.
+
     Yields dicts:
-      {"type": "text",      "content": "..."}
+      {"type": "thinking",  "content": "..."}   — inside <think>…</think>
+      {"type": "text",      "content": "..."}   — visible reply
       {"type": "tool_used", "name": "...", "result": "..."}
       {"type": "done",      "persona": "...", "tool_calls": [...]}
     """
@@ -298,8 +303,70 @@ async def stream_response(
     system_prompt = build_system_prompt(snapshot)
 
     full_text_parts: list[str] = []
-    # Accumulate streaming tool call fragments: {index: {id, name, args_str}}
     pending_tool_calls: dict[int, dict] = {}
+
+    # State machine for <think>…</think> detection.
+    # Tokens arrive one at a time so the tag may span multiple chunks;
+    # we keep a small look-ahead buffer to handle that edge case.
+    in_thinking = False
+    tag_buf = ""          # accumulates chars while we might be mid-tag
+
+    OPEN_TAG  = "<think>"
+    CLOSE_TAG = "</think>"
+    MAX_BUF   = max(len(OPEN_TAG), len(CLOSE_TAG))
+
+    async def _flush_tag_buf(force: bool = False):
+        """Yield whatever is sitting in tag_buf as the current type.
+        Called when we are sure the buffer is not part of a tag boundary."""
+        nonlocal tag_buf, in_thinking
+        if not tag_buf:
+            return
+        if not force:
+            # Keep up to MAX_BUF-1 chars in case a tag starts at the tail
+            safe = tag_buf[: max(0, len(tag_buf) - MAX_BUF + 1)]
+            tag_buf = tag_buf[len(safe):]
+        else:
+            safe, tag_buf = tag_buf, ""
+        if not safe:
+            return
+        if in_thinking:
+            yield {"type": "thinking", "content": safe}
+        else:
+            full_text_parts.append(safe)
+            yield {"type": "text", "content": safe}
+
+    async def _process(raw: str):
+        """Feed raw token text through the think-tag state machine."""
+        nonlocal in_thinking, tag_buf
+        tag_buf += raw
+
+        # Process tag_buf until it's small enough to safely buffer
+        while len(tag_buf) >= MAX_BUF:
+            tag = OPEN_TAG if not in_thinking else CLOSE_TAG
+            idx = tag_buf.find(tag)
+
+            if idx == 0:
+                # Tag starts right here — switch state, consume it
+                in_thinking = not in_thinking
+                tag_buf = tag_buf[len(tag):]
+            elif idx > 0:
+                # Emit everything before the tag, then loop
+                head = tag_buf[:idx]
+                tag_buf = tag_buf[idx:]
+                if in_thinking:
+                    yield {"type": "thinking", "content": head}
+                else:
+                    full_text_parts.append(head)
+                    yield {"type": "text", "content": head}
+            else:
+                # Tag not found — safe to emit up to MAX_BUF-1 chars
+                safe = tag_buf[: len(tag_buf) - MAX_BUF + 1]
+                tag_buf = tag_buf[len(safe):]
+                if in_thinking:
+                    yield {"type": "thinking", "content": safe}
+                else:
+                    full_text_parts.append(safe)
+                    yield {"type": "text", "content": safe}
 
     stream = await client.chat.completions.create(
         model=settings.ollama_model,
@@ -314,12 +381,12 @@ async def stream_response(
         if delta is None:
             continue
 
-        # --- Text tokens ---
+        # --- Text tokens (route through think-tag state machine) ---
         if delta.content:
-            full_text_parts.append(delta.content)
-            yield {"type": "text", "content": delta.content}
+            async for item in _process(delta.content):
+                yield item
 
-        # --- Tool call fragments (streamed piece by piece) ---
+        # --- Tool call fragments ---
         if delta.tool_calls:
             for tc in delta.tool_calls:
                 idx = tc.index
@@ -336,6 +403,10 @@ async def stream_response(
                         pending_tool_calls[idx]["name"] = tc.function.name
                     if tc.function.arguments:
                         pending_tool_calls[idx]["args_str"] += tc.function.arguments
+
+    # Flush any remaining buffered content
+    async for item in _flush_tag_buf(force=True):
+        yield item
 
     # --- Dispatch completed tool calls ---
     tool_calls_made = []
