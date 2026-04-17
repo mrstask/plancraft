@@ -1,0 +1,100 @@
+<!-- Knowledge panel — rendered server-side, swapped by HTMX on tool_used events -->
+<div class="p-3 border-b border-gray-200">
+    <p class="text-xs uppercase text-gray-400 font-semibold">Knowledge Model</p>
+</div>
+
+<!-- Counters -->
+<div class="p-3 space-y-1 border-b border-gray-100">
+    <div class="flex justify-between text-xs">
+        <span class="text-gray-500">📖 Stories</span>
+        <span class="font-medium {% if snapshot.story_count > 0 %}text-blue-600{% else %}text-gray-300{% endif %}">
+            {{ snapshot.story_count }}
+        </span>
+    </div>
+    <div class="flex justify-between text-xs">
+        <span class="text-gray-500">🗂️ Epics</span>
+        <span class="font-medium {% if snapshot.epic_count > 0 %}text-blue-600{% else %}text-gray-300{% endif %}">
+            {{ snapshot.epic_count }}
+        </span>
+    </div>
+    <div class="flex justify-between text-xs">
+        <span class="text-gray-500">🏗️ Components</span>
+        <span class="font-medium {% if snapshot.component_count > 0 %}text-blue-600{% else %}text-gray-300{% endif %}">
+            {{ snapshot.component_count }}
+        </span>
+    </div>
+    <div class="flex justify-between text-xs">
+        <span class="text-gray-500">📝 Decisions</span>
+        <span class="font-medium {% if snapshot.decision_count > 0 %}text-blue-600{% else %}text-gray-300{% endif %}">
+            {{ snapshot.decision_count }}
+        </span>
+    </div>
+    <div class="flex justify-between text-xs">
+        <span class="text-gray-500">✅ Test Specs</span>
+        <span class="font-medium {% if snapshot.test_spec_count > 0 %}text-blue-600{% else %}text-gray-300{% endif %}">
+            {{ snapshot.test_spec_count }}
+        </span>
+    </div>
+    <div class="flex justify-between text-xs">
+        <span class="text-gray-500">📦 Tasks</span>
+        <span class="font-medium {% if snapshot.task_count > 0 %}text-blue-600{% else %}text-gray-300{% endif %}">
+            {{ snapshot.task_count }}
+        </span>
+    </div>
+</div>
+
+<!-- Problem statement -->
+{% if snapshot.problem_statement %}
+<div class="p-3 border-b border-gray-100">
+    <p class="text-xs uppercase text-gray-400 font-semibold mb-1">Problem</p>
+    <p class="text-xs text-gray-600 leading-relaxed">{{ snapshot.problem_statement }}</p>
+</div>
+{% endif %}
+
+<!-- Recent stories -->
+{% if snapshot.recent_stories %}
+<div class="p-3 border-b border-gray-100">
+    <p class="text-xs uppercase text-gray-400 font-semibold mb-2">Recent Stories</p>
+    <div class="space-y-2">
+        {% for story in snapshot.recent_stories %}
+        <div class="bg-gray-50 rounded-lg px-2 py-2 text-xs">
+            <span class="inline-block px-1.5 py-0.5 rounded text-white text-xs mr-1
+                {% if story.priority == 'must' %}bg-red-500
+                {% elif story.priority == 'should' %}bg-orange-400
+                {% elif story.priority == 'could' %}bg-yellow-400
+                {% else %}bg-gray-400{% endif %}">
+                {{ story.priority }}
+            </span>
+            <span class="text-gray-700">As a {{ story.as_a }}, I want {{ story.i_want }}</span>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Recent components -->
+{% if snapshot.recent_components %}
+<div class="p-3 border-b border-gray-100">
+    <p class="text-xs uppercase text-gray-400 font-semibold mb-2">Components</p>
+    <div class="space-y-2">
+        {% for comp in snapshot.recent_components %}
+        <div class="bg-gray-50 rounded-lg px-2 py-2 text-xs">
+            <p class="font-medium text-gray-800">{{ comp.name }}</p>
+            <p class="text-gray-500 mt-0.5">{{ comp.responsibility[:60] }}{% if comp.responsibility|length > 60 %}…{% endif %}</p>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Export buttons -->
+<div class="p-3 mt-auto space-y-1.5">
+    <a href="/projects/{{ project_id }}/export/tasks"
+       class="block text-center text-xs bg-gray-100 hover:bg-gray-200 rounded-lg py-1.5 transition text-gray-600">
+        📦 Export Tasks
+    </a>
+    <a href="/projects/{{ project_id }}/export/arc42"
+       class="block text-center text-xs bg-gray-100 hover:bg-gray-200 rounded-lg py-1.5 transition text-gray-600">
+        📄 Export arc42
+    </a>
+</div>

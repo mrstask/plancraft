@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Dev Planning Studio{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto mt-20 px-4">
+    <h1 class="text-3xl font-bold mb-2">🧠 Dev Planning Studio</h1>
+    <p class="text-gray-500 mb-8">
+        Plan your software project with AI — user stories, architecture, TDD specs, and task breakdowns.
+    </p>
+
+    <!-- New project form -->
+    <form method="POST" action="/projects" class="flex gap-2 mb-10">
+        <input
+            type="text"
+            name="name"
+            placeholder="New project name..."
+            required
+            class="flex-1 border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+        <button
+            type="submit"
+            class="bg-blue-600 text-white px-5 py-2 rounded-lg hover:bg-blue-700 transition"
+        >
+            + New Project
+        </button>
+    </form>
+
+    <!-- Project list -->
+    {% if projects %}
+    <div class="space-y-3">
+        {% for project in projects %}
+        <a
+            href="/projects/{{ project.id }}"
+            class="block border border-gray-200 rounded-lg px-5 py-4 bg-white hover:border-blue-400 hover:shadow-sm transition"
+        >
+            <div class="flex items-center justify-between">
+                <div>
+                    <span class="font-medium">{{ project.name }}</span>
+                    {% if project.description %}
+                    <p class="text-sm text-gray-500 mt-0.5 truncate max-w-sm">{{ project.description }}</p>
+                    {% endif %}
+                </div>
+                <span class="text-xs px-2 py-1 rounded-full
+                    {% if project.status == 'planning' %}bg-yellow-100 text-yellow-700
+                    {% elif project.status == 'scaffolded' %}bg-green-100 text-green-700
+                    {% else %}bg-gray-100 text-gray-500{% endif %}">
+                    {{ project.status }}
+                </span>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-gray-400 text-center mt-12">No projects yet. Create your first one above.</p>
+    {% endif %}
+</div>
+{% endblock %}

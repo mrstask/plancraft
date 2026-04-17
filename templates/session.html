@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+{% block title %}{{ project.name }} — Planning{% endblock %}
+
+{% block content %}
+<div class="flex h-screen" x-data="planningSession()">
+
+    <!-- ================================================================
+         LEFT SIDEBAR — project list / navigation
+    ================================================================ -->
+    <aside class="w-48 bg-white border-r border-gray-200 flex flex-col shrink-0">
+        <div class="p-3 border-b border-gray-200">
+            <a href="/" class="text-sm text-gray-500 hover:text-gray-700">← Projects</a>
+        </div>
+        <div class="p-3">
+            <p class="text-xs uppercase text-gray-400 font-semibold mb-2">Current</p>
+            <p class="text-sm font-medium text-blue-600 truncate">{{ project.name }}</p>
+            <span class="text-xs text-gray-400">{{ project.status }}</span>
+        </div>
+        <div class="mt-auto p-3 border-t border-gray-200 space-y-1">
+            <a href="/projects/{{ project.id }}/export/tasks"
+               class="block text-xs text-gray-500 hover:text-gray-700">
+                📦 Export Tasks
+            </a>
+            <a href="/projects/{{ project.id }}/export/arc42"
+               class="block text-xs text-gray-500 hover:text-gray-700">
+                📄 Export arc42
+            </a>
+        </div>
+    </aside>
+
+    <!-- ================================================================
+         CENTER — conversation
+    ================================================================ -->
+    <main class="flex-1 flex flex-col min-w-0">
+
+        <!-- Header bar with active persona badge -->
+        <div class="bg-white border-b border-gray-200 px-5 py-3 flex items-center gap-3">
+            <span class="text-sm font-medium text-gray-700">🎭 Active role:</span>
+            <span
+                id="persona-badge"
+                class="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-700 font-medium"
+                x-text="personaLabels[activePersona] || 'Business Analyst'"
+            ></span>
+        </div>
+
+        <!-- Message list -->
+        <div
+            id="messages"
+            class="flex-1 overflow-y-auto px-5 py-4 space-y-4"
+        >
+            <!-- Welcome message -->
+            <div class="flex gap-3">
+                <div class="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs shrink-0 mt-0.5">
+                    AI
+                </div>
+                <div class="bg-white border border-gray-200 rounded-2xl rounded-tl-sm px-4 py-3 max-w-xl text-sm leading-relaxed">
+                    Hi! I'm here to help you plan <strong>{{ project.name }}</strong>.
+                    Let's start simple — tell me about the problem you're trying to solve.
+                    Who's it for, and what's frustrating them right now?
+                </div>
+            </div>
+        </div>
+
+        <!-- Typing indicator (hidden until streaming) -->
+        <div id="typing-indicator" class="hidden px-5 pb-2">
+            <div class="flex gap-3">
+                <div class="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs shrink-0">
+                    AI
+                </div>
+                <div class="bg-white border border-gray-200 rounded-2xl rounded-tl-sm px-4 py-3 text-sm text-gray-400">
+                    <span class="animate-pulse">thinking…</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Input form -->
+        <div class="border-t border-gray-200 bg-white px-5 py-3">
+            <form
+                id="chat-form"
+                hx-post="/projects/{{ project.id }}/chat"
+                hx-encoding="application/x-www-form-urlencoded"
+                hx-on::before-request="onSubmit()"
+                class="flex gap-2"
+            >
+                <textarea
+                    id="message-input"
+                    name="content"
+                    rows="1"
+                    placeholder="Type your message..."
+                    required
+                    class="flex-1 border border-gray-300 rounded-xl px-4 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    @keydown.enter.exact.prevent="$el.closest('form').requestSubmit()"
+                    @input="autoResize($event.target)"
+                ></textarea>
+                <button
+                    type="submit"
+                    id="send-btn"
+                    class="bg-blue-600 text-white px-4 py-2 rounded-xl hover:bg-blue-700 transition text-sm"
+                >
+                    Send
+                </button>
+            </form>
+        </div>
+    </main>
+
+    <!-- ================================================================
+         RIGHT PANEL — knowledge model
+    ================================================================ -->
+    <aside
+        class="w-64 bg-white border-l border-gray-200 flex flex-col shrink-0 overflow-y-auto"
+        id="knowledge-panel"
+        hx-get="/projects/{{ project.id }}/knowledge-panel"
+        hx-trigger="load"
+    >
+        <div class="p-3 border-b border-gray-200">
+            <p class="text-xs uppercase text-gray-400 font-semibold">Knowledge Model</p>
+        </div>
+        <div class="p-3 text-sm text-gray-400">Loading...</div>
+    </aside>
+
+</div>
+
+<script>
+function planningSession() {
+    return {
+        activePersona: 'ba',
+        personaLabels: {
+            ba: '🔍 Business Analyst',
+            pm: '📋 Product Manager',
+            architect: '🏗️ Architect',
+            tdd: '✅ TDD Tester',
+        },
+
+        onSubmit() {
+            const input = document.getElementById('message-input');
+            const content = input.value.trim();
+            if (!content) return;
+
+            // Append user message immediately
+            appendMessage('user', content);
+            input.value = '';
+            input.style.height = 'auto';
+
+            // Show typing indicator
+            document.getElementById('typing-indicator').classList.remove('hidden');
+
+            // Set up SSE listener for the response
+            this.listenForResponse();
+        },
+
+        listenForResponse() {
+            // Response arrives via SSE from /projects/{id}/chat POST
+            // HTMX handles the POST; we set up a listener for custom events
+            const self = this;
+
+            document.body.addEventListener('htmx:sseMessage', function handler(e) {
+                const event = e.detail.event;
+                const data = JSON.parse(e.detail.data || '{}');
+
+                if (event === 'token') {
+                    self.appendToken(data.content);
+                } else if (event === 'tool_used') {
+                    // Refresh knowledge panel
+                    htmx.trigger('#knowledge-panel', 'load');
+                } else if (event === 'done') {
+                    self.activePersona = data.persona || 'ba';
+                    document.getElementById('typing-indicator').classList.add('hidden');
+                    document.body.removeEventListener('htmx:sseMessage', handler);
+                }
+            });
+        },
+
+        appendToken(text) {
+            // Find or create the current streaming message bubble
+            let bubble = document.getElementById('streaming-bubble');
+            if (!bubble) {
+                const wrapper = createMessageWrapper('assistant');
+                bubble = wrapper.querySelector('.message-content');
+                bubble.id = 'streaming-bubble';
+                document.getElementById('messages').appendChild(wrapper);
+                document.getElementById('typing-indicator').classList.add('hidden');
+            }
+            bubble.textContent += text;
+            scrollToBottom();
+        },
+
+        autoResize(el) {
+            el.style.height = 'auto';
+            el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+        },
+    };
+}
+
+function appendMessage(role, content) {
+    const wrapper = createMessageWrapper(role);
+    wrapper.querySelector('.message-content').textContent = content;
+    document.getElementById('messages').appendChild(wrapper);
+    // Remove any previous streaming bubble ID so next response starts fresh
+    const prev = document.getElementById('streaming-bubble');
+    if (prev) prev.removeAttribute('id');
+    scrollToBottom();
+}
+
+function createMessageWrapper(role) {
+    const isUser = role === 'user';
+    const div = document.createElement('div');
+    div.className = 'flex gap-3' + (isUser ? ' justify-end' : '');
+    div.innerHTML = isUser
+        ? `<div class="bg-blue-600 text-white rounded-2xl rounded-tr-sm px-4 py-3 max-w-xl text-sm leading-relaxed message-content"></div>`
+        : `<div class="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs shrink-0 mt-0.5">AI</div>
+           <div class="bg-white border border-gray-200 rounded-2xl rounded-tl-sm px-4 py-3 max-w-xl text-sm leading-relaxed message-content"></div>`;
+    return div;
+}
+
+function scrollToBottom() {
+    const msgs = document.getElementById('messages');
+    msgs.scrollTop = msgs.scrollHeight;
+}
+</script>
+{% endblock %}
