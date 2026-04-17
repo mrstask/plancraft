@@ -2,16 +2,16 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    anthropic_api_key: str
     database_url: str = "sqlite+aiosqlite:///./planning.db"
     secret_key: str = "dev-secret-change-in-production"
     debug: bool = True
 
-    # Claude model — quality matters more than cost here
-    claude_model: str = "claude-sonnet-4-5"
+    # Ollama settings
+    ollama_base_url: str = "http://localhost:11434/v1"
+    ollama_model: str = "gemma4:31b"
 
     # Conversation limits
-    max_history_messages: int = 50   # messages kept in Claude context
+    max_history_messages: int = 50
     max_tokens: int = 4096
 
     class Config:

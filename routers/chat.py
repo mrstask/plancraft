@@ -10,7 +10,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from database import get_db
 from models.db import Message
-from services.claude import stream_response
+from services.llm import stream_response
 from services.knowledge import KnowledgeService
 
 log = logging.getLogger(__name__)
