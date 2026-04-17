@@ -11,6 +11,7 @@ from database import get_db
 from models.db import Message
 from services.llm import stream_response
 from services.knowledge import KnowledgeService
+from services.suggestions import get_suggestions
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -72,7 +73,11 @@ async def send_message(
                 ))
                 await db.commit()
 
-            yield _sse("done", {"persona": active_persona})
+            # Fresh snapshot (tool calls may have updated it this turn)
+            snapshot = await KnowledgeService(db).get_snapshot(project_id)
+            suggestions = get_suggestions(active_persona, snapshot)
+
+            yield _sse("done", {"persona": active_persona, "suggestions": suggestions})
 
         except Exception as e:
             log.error(f"Stream error: {e}", exc_info=True)

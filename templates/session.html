@@ -130,11 +130,14 @@ function planningSession() {
             tdd:       '✅ TDD Tester',
         },
 
-        async submitMessage() {
+        async submitMessage(preset = null) {
             if (this.sending) return;
             const input = document.getElementById('message-input');
-            const content = input.value.trim();
+            const content = preset ?? input.value.trim();
             if (!content) return;
+
+            // Remove any suggestion chips from the previous turn
+            document.querySelectorAll('.suggestion-chips').forEach(el => el.remove());
 
             // Capture value FIRST, then clear
             this.sending = true;
@@ -240,6 +243,9 @@ function planningSession() {
                 case 'done':
                     this.activePersona = data.persona || 'ba';
                     document.getElementById('typing-indicator').classList.add('hidden');
+                    if (data.suggestions?.length) {
+                        this.showSuggestions(data.suggestions);
+                    }
                     break;
                 case 'error':
                     appendMessage('assistant', `⚠️ ${data.message || 'Unknown error'}`);
@@ -294,6 +300,26 @@ function planningSession() {
             // Show raw text while streaming — renders markdown on done
             bubble.dataset.raw += text;
             bubble.textContent = bubble.dataset.raw;
+            scrollToBottom();
+        },
+
+        showSuggestions(suggestions) {
+            const self = this;
+            const chips = document.createElement('div');
+            chips.className = 'suggestion-chips flex flex-wrap gap-2 pl-10 pt-1 pb-2';
+            suggestions.forEach(text => {
+                const btn = document.createElement('button');
+                btn.className = [
+                    'text-xs px-3 py-1.5 rounded-full',
+                    'border border-blue-200 text-blue-600 bg-white',
+                    'hover:bg-blue-50 hover:border-blue-400',
+                    'transition-colors cursor-pointer select-none',
+                ].join(' ');
+                btn.textContent = text;
+                btn.addEventListener('click', () => self.submitMessage(text));
+                chips.appendChild(btn);
+            });
+            document.getElementById('messages').appendChild(chips);
             scrollToBottom();
         },
 
