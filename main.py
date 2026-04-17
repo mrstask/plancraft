@@ -12,6 +12,8 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s — %(message)s",
 )
+# SQLAlchemy is very chatty — only show warnings and above
+logging.getLogger("sqlalchemy").setLevel(logging.WARNING)
 
 
 @asynccontextmanager
