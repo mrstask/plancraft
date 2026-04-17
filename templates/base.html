@@ -8,9 +8,14 @@
     <!-- Tailwind CSS (CDN) -->
     <script src="https://cdn.tailwindcss.com"></script>
 
-    <!-- HTMX + SSE extension -->
+    <!-- HTMX -->
     <script src="https://unpkg.com/htmx.org@2.0.3"></script>
-    <script src="https://unpkg.com/htmx-ext-sse@2.2.2/sse.js"></script>
+
+    <!-- Markdown renderer -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@13/marked.min.js"></script>
+    <script>
+        marked.setOptions({ breaks: true, gfm: true });
+    </script>
 
     <!-- Alpine.js for local UI state -->
     <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>

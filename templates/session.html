@@ -153,9 +153,17 @@ function planningSession() {
             } finally {
                 this.sending = false;
                 document.getElementById('typing-indicator').classList.add('hidden');
+
+                // Render markdown on the completed assistant bubble
+                const bubble = document.getElementById('streaming-bubble');
+                if (bubble && bubble.dataset.raw) {
+                    bubble.innerHTML = marked.parse(bubble.dataset.raw);
+                    bubble.classList.add('prose-content');
+                    delete bubble.dataset.raw;
+                }
+
                 // Remove per-turn markers so next reply starts fresh
-                const prev = document.getElementById('streaming-bubble');
-                if (prev) prev.removeAttribute('id');
+                if (bubble) bubble.removeAttribute('id');
                 const prevThinking = document.getElementById('thinking-content');
                 if (prevThinking) prevThinking.removeAttribute('id');
                 const prevWrapper = document.getElementById('thinking-wrapper');
@@ -279,10 +287,13 @@ function planningSession() {
                 const wrapper = createMessageWrapper('assistant');
                 bubble = wrapper.querySelector('.message-content');
                 bubble.id = 'streaming-bubble';
+                bubble.dataset.raw = '';   // accumulate raw markdown here
                 document.getElementById('messages').appendChild(wrapper);
                 document.getElementById('typing-indicator').classList.add('hidden');
             }
-            bubble.textContent += text;
+            // Show raw text while streaming — renders markdown on done
+            bubble.dataset.raw += text;
+            bubble.textContent = bubble.dataset.raw;
             scrollToBottom();
         },
 
@@ -306,7 +317,7 @@ function createMessageWrapper(role) {
     div.className = 'flex gap-3' + (isUser ? ' justify-end' : '');
     div.innerHTML = isUser
         ? `<div class="bg-blue-600 text-white rounded-2xl rounded-tr-sm px-4 py-3 max-w-xl text-sm leading-relaxed message-content"></div>`
-        : `<div class="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs shrink-0 mt-0.5">AI</div>
+        : `<div class="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs shrink-0 mt-0.5 select-none">AI</div>
            <div class="bg-white border border-gray-200 rounded-2xl rounded-tl-sm px-4 py-3 max-w-xl text-sm leading-relaxed message-content"></div>`;
     return div;
 }
