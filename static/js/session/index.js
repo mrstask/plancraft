@@ -160,6 +160,7 @@ function registerPlanningSession() {
                     this.appendToken(data.content || '');
                     break;
                 case 'tool_used':
+                    this.appendToolBadge(data.tool, data.result);
                     htmx.ajax('GET', `/projects/${projectId}/knowledge-panel`, {
                         target: '#knowledge-panel',
                         swap: 'innerHTML',
@@ -242,6 +243,30 @@ function registerPlanningSession() {
             }
             bubble.dataset.raw += text;
             bubble.textContent = bubble.dataset.raw;
+            scrollToBottom();
+        },
+
+        appendToolBadge(toolName, result) {
+            const TOOL_ICONS = {
+                set_problem_statement: '📌',
+                add_user_story: '📖',
+                update_user_story: '✏️',
+                add_epic: '🗂️',
+                record_constraint: '⚠️',
+                add_component: '🧩',
+                record_decision: '🏛️',
+                add_test_spec: '✅',
+                propose_task: '📋',
+                set_mvp_scope: '🎯',
+            };
+            const icon = TOOL_ICONS[toolName] || '💾';
+            const badge = document.createElement('div');
+            badge.className = 'flex items-center pl-10 py-0.5';
+            const pill = document.createElement('span');
+            pill.className = 'text-xs text-green-700 bg-green-50 border border-green-100 rounded-full px-2.5 py-0.5';
+            pill.textContent = `${icon} ${result}`;
+            badge.appendChild(pill);
+            getActiveTabPane().appendChild(badge);
             scrollToBottom();
         },
 

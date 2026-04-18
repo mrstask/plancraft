@@ -24,16 +24,22 @@ PHASE_TOOL_RULES = {
         "- When you identify a user story -> call add_user_story() immediately.\n"
         "- When you refine an existing story -> call update_user_story().\n"
         "- When you note a constraint -> call record_constraint().\n"
+        "- IMPORTANT: Always write your conversational reply in the same response as any tool calls.\n"
+        "  Never call tools silently — the user must receive a visible text response every turn.\n"
     ),
     "pm": (
         "- When you define or refine an epic -> call add_epic().\n"
         "- When you update a story's priority or wording -> call update_user_story().\n"
         "- When you lock the MVP cut -> call set_mvp_scope() with the selected story IDs.\n"
+        "- IMPORTANT: Always write your conversational reply in the same response as any tool calls.\n"
+        "  Never call tools silently — the user must receive a visible text response every turn.\n"
     ),
     "architect": (
         "- When you propose a component -> call add_component() immediately, one call per component.\n"
         "- When you make an architecture decision -> call record_decision() immediately.\n"
         "- When you note a technical constraint -> call record_constraint().\n"
+        "- IMPORTANT: Always write your conversational reply in the same response as any tool calls.\n"
+        "  Never call tools silently — the user must receive a visible text response every turn.\n"
     ),
     "tdd": (
         "- Every test spec you think of -> call add_test_spec() in this response.\n"

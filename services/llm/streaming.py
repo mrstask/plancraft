@@ -243,5 +243,39 @@ async def stream_response(
             if item["type"] == "tool_used":
                 tool_calls_made.append({"name": item["name"], "result": item["result"]})
 
+    # Safety net: if the model called tools but produced no visible text, run a
+    # text-only continuation so the user always receives a reply. Only applies to
+    # conversational phases (not tdd/review which are tool-output-only by design).
+    if tool_calls_made and not full_text.strip() and role_tab not in ("tdd", "review"):
+        saved_summary = ", ".join(t["name"].replace("_", " ") for t in tool_calls_made)
+        continuation_hint = (
+            f"You just called: {saved_summary}. "
+            "Now write your conversational reply to the user's last message. No further tool calls."
+        )
+        continuation_messages = (
+            [{"role": "system", "content": system_prompt + "\n\n" + continuation_hint}]
+            + messages
+        )
+        try:
+            cont_stream = await client.chat.completions.create(
+                model=model_name,
+                max_tokens=settings.max_tokens,
+                messages=continuation_messages,
+                stream=True,
+            )
+            async for chunk in cont_stream:
+                delta = chunk.choices[0].delta if chunk.choices else None
+                if delta and delta.content:
+                    async for item in process_token(delta.content):
+                        full_text_parts.append(item["content"]) if item["type"] == "text" else None
+                        yield item
+            async for item in flush_tag_buf(force=True):
+                if item["type"] == "text":
+                    full_text_parts.append(item["content"])
+                yield item
+        except Exception as exc:
+            log.warning("Continuation pass failed: %s", exc)
+
+    full_text = "".join(full_text_parts)
     persona = detect_persona(full_text) if full_text.strip() else role_tab
     yield {"type": "done", "persona": persona, "tool_calls": tool_calls_made}
