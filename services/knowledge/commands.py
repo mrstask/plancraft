@@ -90,9 +90,24 @@ class ArtifactCommands(KnowledgeBase):
         return f"Epic added: {epic.id}"
 
     async def add_user_story(self, project_id: str, args: AddUserStoryArgs) -> str:
+        resolved_epic_id: str | None = None
+        if args.epic_id:
+            # Try exact UUID match first
+            r = await self.db.execute(
+                select(Epic).where(Epic.id == args.epic_id, Epic.project_id == project_id)
+            )
+            epic = r.scalar_one_or_none()
+            if not epic:
+                # LLM sometimes passes a slug/title instead of UUID — try by title
+                r = await self.db.execute(
+                    select(Epic).where(Epic.project_id == project_id, Epic.title.ilike(args.epic_id))
+                )
+                epic = r.scalar_one_or_none()
+            resolved_epic_id = epic.id if epic else None
+
         story = UserStory(
             project_id=project_id,
-            epic_id=args.epic_id,
+            epic_id=resolved_epic_id,
             as_a=args.as_a,
             i_want=args.i_want,
             so_that=args.so_that,

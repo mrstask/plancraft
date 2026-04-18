@@ -8,7 +8,7 @@ These are used for:
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # ---------------------------------------------------------------------------
@@ -116,6 +116,18 @@ class AddEpicArgs(BaseModel):
 class RecordConstraintArgs(BaseModel):
     type: Literal["technical", "business", "time"]
     description: str
+
+    @field_validator("type", mode="before")
+    @classmethod
+    def normalize_type(cls, v: object) -> str:
+        lowered = str(v).lower().replace("_", " ").replace("/", " ").strip()
+        if any(kw in lowered for kw in ("tech", "security", "architect", "language", "framework", "platform", "system", "infrastructure")):
+            return "technical"
+        if any(kw in lowered for kw in ("business", "legal", "compliance", "regulatory", "market")):
+            return "business"
+        if any(kw in lowered for kw in ("time", "deadline", "schedule", "sprint", "budget", "resource")):
+            return "time"
+        return "technical"
 
 
 class AddComponentArgs(BaseModel):

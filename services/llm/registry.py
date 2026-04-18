@@ -215,6 +215,12 @@ async def dispatch_tool(project_id: str, tool_name: str, tool_input: dict, svc) 
         return await tool.invoke(project_id, tool_input, svc)
     except Exception as exc:
         log.error("Tool %s failed: %s", tool_name, exc, exc_info=True)
+        # Roll back the session so the next tool call in the same stream can proceed.
+        # Without this, a failed flush leaves the session in PendingRollbackError state.
+        try:
+            await svc.db.rollback()
+        except Exception:
+            pass
         return f"Error: {exc}"
 
 
