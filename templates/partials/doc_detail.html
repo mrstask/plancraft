@@ -1,0 +1,186 @@
+<!-- Document detail — loaded into the left sidebar when an item is clicked -->
+
+<!-- Back button -->
+<div class="p-3 border-b border-gray-200 shrink-0">
+    <button
+        class="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
+        hx-get="/projects/{{ project_id }}/doc-tree"
+        hx-target="#doc-sidebar-content"
+        hx-swap="innerHTML"
+    >
+        ← Back
+    </button>
+</div>
+
+<div class="flex-1 overflow-y-auto p-3 space-y-3 text-sm">
+
+{% if not item %}
+<p class="text-xs text-gray-400">Item not found.</p>
+
+{% elif item_type == 'story' %}
+<!-- User Story detail -->
+<div>
+    <span class="inline-block px-2 py-0.5 rounded text-white text-xs font-medium
+        {% if item.priority == 'must' %}bg-red-500
+        {% elif item.priority == 'should' %}bg-orange-400
+        {% elif item.priority == 'could' %}bg-yellow-400
+        {% else %}bg-gray-400{% endif %}">
+        {{ item.priority }}
+    </span>
+    {% if item.epic %}<span class="ml-1 text-xs text-gray-400">{{ item.epic.title }}</span>{% endif %}
+</div>
+<div class="space-y-2">
+    <div>
+        <p class="text-xs font-semibold text-gray-400 uppercase">As a</p>
+        <p class="text-gray-800">{{ item.as_a }}</p>
+    </div>
+    <div>
+        <p class="text-xs font-semibold text-gray-400 uppercase">I want</p>
+        <p class="text-gray-800">{{ item.i_want }}</p>
+    </div>
+    <div>
+        <p class="text-xs font-semibold text-gray-400 uppercase">So that</p>
+        <p class="text-gray-800">{{ item.so_that }}</p>
+    </div>
+    {% if item.acceptance_criteria %}
+    <div>
+        <p class="text-xs font-semibold text-gray-400 uppercase mb-1">Acceptance Criteria</p>
+        <ul class="space-y-1">
+            {% for ac in item.acceptance_criteria | sort(attribute='order_index') %}
+            <li class="flex items-start gap-1.5 text-gray-700">
+                <span class="text-green-500 shrink-0 mt-0.5">✓</span>
+                <span>{{ ac.criterion }}</span>
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+</div>
+
+{% elif item_type == 'component' %}
+<!-- Component detail -->
+<div>
+    <h3 class="font-semibold text-gray-800 text-base">{{ item.name }}</h3>
+    {% if item.component_type %}<span class="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{{ item.component_type }}</span>{% endif %}
+</div>
+<div>
+    <p class="text-xs font-semibold text-gray-400 uppercase mb-1">Responsibility</p>
+    <p class="text-gray-700 leading-relaxed">{{ item.responsibility }}</p>
+</div>
+{% if item.file_paths %}
+<div>
+    <p class="text-xs font-semibold text-gray-400 uppercase mb-1">File Paths</p>
+    <ul class="space-y-0.5">
+        {% for path in item.file_paths %}
+        <li class="text-xs font-mono text-blue-600 bg-blue-50 px-2 py-0.5 rounded">{{ path }}</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+{% elif item_type == 'decision' %}
+<!-- Architecture Decision detail -->
+<div>
+    <h3 class="font-semibold text-gray-800 text-base">{{ item.title }}</h3>
+</div>
+{% if item.context %}
+<div>
+    <p class="text-xs font-semibold text-gray-400 uppercase mb-1">Context</p>
+    <p class="text-gray-700 leading-relaxed">{{ item.context }}</p>
+</div>
+{% endif %}
+<div>
+    <p class="text-xs font-semibold text-gray-400 uppercase mb-1">Decision</p>
+    <p class="text-gray-700 leading-relaxed">{{ item.decision }}</p>
+</div>
+{% if item.consequences %}
+    {% if item.consequences.get('positive') %}
+    <div>
+        <p class="text-xs font-semibold text-green-600 uppercase mb-1">✓ Positive consequences</p>
+        <ul class="space-y-1">
+            {% for c in item.consequences['positive'] %}
+            <li class="text-xs text-gray-700 flex items-start gap-1"><span class="text-green-500 shrink-0">+</span>{{ c }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+    {% if item.consequences.get('negative') %}
+    <div>
+        <p class="text-xs font-semibold text-red-500 uppercase mb-1">⚠ Trade-offs</p>
+        <ul class="space-y-1">
+            {% for c in item.consequences['negative'] %}
+            <li class="text-xs text-gray-700 flex items-start gap-1"><span class="text-red-400 shrink-0">−</span>{{ c }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+{% endif %}
+
+{% elif item_type == 'test-spec' %}
+<!-- Test Spec detail -->
+<div>
+    <span class="inline-block px-2 py-0.5 rounded text-xs bg-purple-100 text-purple-600 font-medium">{{ item.test_type }}</span>
+</div>
+<div>
+    <p class="text-xs font-semibold text-gray-400 uppercase mb-1">Description</p>
+    <p class="text-gray-700 leading-relaxed">{{ item.description }}</p>
+</div>
+{% if item.given_context %}
+<div class="bg-gray-50 rounded-lg p-2.5 space-y-2">
+    {% if item.given_context %}
+    <div>
+        <p class="text-xs font-semibold text-gray-500">GIVEN</p>
+        <p class="text-xs text-gray-700 mt-0.5">{{ item.given_context }}</p>
+    </div>
+    {% endif %}
+    {% if item.when_action %}
+    <div>
+        <p class="text-xs font-semibold text-gray-500">WHEN</p>
+        <p class="text-xs text-gray-700 mt-0.5">{{ item.when_action }}</p>
+    </div>
+    {% endif %}
+    {% if item.then_expectation %}
+    <div>
+        <p class="text-xs font-semibold text-gray-500">THEN</p>
+        <p class="text-xs text-gray-700 mt-0.5">{{ item.then_expectation }}</p>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
+{% elif item_type == 'task' %}
+<!-- Task detail -->
+<div>
+    <h3 class="font-semibold text-gray-800 text-base">{{ item.title }}</h3>
+    <span class="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded mt-1 inline-block">{{ item.complexity }}</span>
+</div>
+<div>
+    <p class="text-xs font-semibold text-gray-400 uppercase mb-1">Description</p>
+    <p class="text-gray-700 leading-relaxed">{{ item.description }}</p>
+</div>
+{% if item.acceptance_criteria %}
+<div>
+    <p class="text-xs font-semibold text-gray-400 uppercase mb-1">Acceptance Criteria</p>
+    <ul class="space-y-1">
+        {% for ac in item.acceptance_criteria %}
+        <li class="flex items-start gap-1.5 text-xs text-gray-700">
+            <span class="text-green-500 shrink-0 mt-0.5">✓</span>
+            <span>{{ ac }}</span>
+        </li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+{% if item.file_paths %}
+<div>
+    <p class="text-xs font-semibold text-gray-400 uppercase mb-1">Files</p>
+    <ul class="space-y-0.5">
+        {% for path in item.file_paths %}
+        <li class="text-xs font-mono text-blue-600 bg-blue-50 px-2 py-0.5 rounded">{{ path }}</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+{% endif %}
+</div>

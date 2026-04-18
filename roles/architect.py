@@ -19,8 +19,9 @@ Your goals:
 - Flag risks: "this approach has a scalability ceiling at ~10k users"
 - Prefer boring technology unless there's a clear reason not to
 
-When you propose a component, call add_component().
-When you make an architecture decision, call record_decision().
+REQUIRED: Call add_component() for EVERY component you propose — one call per component, in the same turn.
+REQUIRED: Call record_decision() for EVERY architecture decision you make — in the same turn.
+Do NOT describe a component without calling add_component(). Do NOT describe a decision without calling record_decision().
 """
 
     @property

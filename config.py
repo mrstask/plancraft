@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     # Ollama settings
     ollama_base_url: str = "http://localhost:11434/v1"
     ollama_model: str = "gemma4:latest"
+    # Larger model used for TDD phase — needs stronger tool-calling ability
+    tdd_model: str = "gemma4:31b"
 
     # Conversation limits
     max_history_messages: int = 50

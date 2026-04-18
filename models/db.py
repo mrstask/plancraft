@@ -31,6 +31,7 @@ class Project(Base):
     description = Column(Text, nullable=True)
     status = Column(String, default="planning")   # planning | scaffolded | handed-off
     root_path = Column(String, nullable=True)      # set after scaffolding
+    current_phase = Column(String, default="ba")  # ba | pm | architect | tdd
     created_at = Column(DateTime, default=_now)
     updated_at = Column(DateTime, default=_now, onupdate=_now)
 
@@ -56,6 +57,7 @@ class Message(Base):
     role = Column(String, nullable=False)         # 'user' | 'assistant'
     content = Column(Text, nullable=False)
     active_persona = Column(String, nullable=True)  # 'ba' | 'pm' | 'architect' | 'tdd'
+    role_tab = Column(String, nullable=True, default="ba")  # which phase tab this message belongs to
     created_at = Column(DateTime, default=_now)
 
     project = relationship("Project", back_populates="messages")

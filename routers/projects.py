@@ -1,4 +1,6 @@
 """Project CRUD routes."""
+import json
+from collections import defaultdict
 from fastapi import APIRouter, Depends, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -6,7 +8,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from models.db import Project
+from models.db import Project, Message
+from models.domain import compute_phase_status, current_tab_from_phases
+from services.knowledge import KnowledgeService
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -41,4 +45,35 @@ async def project_session(
     project = result.scalar_one_or_none()
     if not project:
         return RedirectResponse(url="/")
-    return templates.TemplateResponse("session.html", {"request": request, "project": project})
+
+    msg_result = await db.execute(
+        select(Message)
+        .where(Message.project_id == project_id)
+        .order_by(Message.created_at.asc())
+    )
+    all_messages = msg_result.scalars().all()
+
+    # Group messages by phase tab
+    history_by_tab: dict[str, list] = defaultdict(list)
+    for msg in all_messages:
+        tab = msg.role_tab or "ba"
+        history_by_tab[tab].append(msg)
+
+    # Compute phase status and initial active tab
+    svc = KnowledgeService(db)
+    snapshot = await svc.get_snapshot(project_id)
+    phases = compute_phase_status(snapshot)
+    initial_tab = current_tab_from_phases(phases)
+    phases_json = json.dumps([p.to_dict() for p in phases])
+
+    return templates.TemplateResponse(
+        "session.html",
+        {
+            "request": request,
+            "project": project,
+            "history_by_tab": dict(history_by_tab),
+            "phases": phases,
+            "phases_json": phases_json,
+            "initial_tab": initial_tab,
+        },
+    )

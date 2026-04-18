@@ -3,6 +3,27 @@
     <p class="text-xs uppercase text-gray-400 font-semibold">Knowledge Model</p>
 </div>
 
+<!-- Phase progress -->
+{% if phases %}
+<div class="p-3 border-b border-gray-100 space-y-1.5">
+    {% for phase in phases %}
+    <div class="flex items-center gap-2 text-xs">
+        <span class="{% if phase.complete %}text-green-500{% elif phase.unlocked %}text-blue-500{% else %}text-gray-300{% endif %} text-base leading-none">
+            {% if phase.complete %}●{% elif phase.unlocked %}◑{% else %}○{% endif %}
+        </span>
+        <span class="{% if phase.complete %}text-gray-600{% elif phase.unlocked %}text-blue-600 font-medium{% else %}text-gray-300{% endif %}">
+            {{ phase.label }}
+        </span>
+        {% if phase.complete %}
+        <span class="ml-auto text-green-500 font-medium">✓</span>
+        {% elif phase.unlocked %}
+        <span class="ml-auto text-blue-400 text-xs">active</span>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
 <!-- Counters -->
 <div class="p-3 space-y-1 border-b border-gray-100">
     <div class="flex justify-between text-xs">

@@ -2,29 +2,38 @@
 {% block title %}{{ project.name }} — Planning{% endblock %}
 
 {% block content %}
+
+{# Welcome messages shown when a tab has no history yet #}
+{% set WELCOME = {
+    'ba':        "Hi! I'm your Business Analyst. Let's start by understanding the problem. Who are the users and what frustrates them right now?",
+    'pm':        "I'm your Product Manager. The BA phase captured some great stories. Let's organise them into epics and lock down the MVP scope.",
+    'architect': "I'm your Architect. Based on the stories and epics, let's design the system. What are the core components this app needs?",
+    'tdd':       "I'm your TDD Tester. Architecture is in place — let's write test specs for each component and propose implementation tasks.",
+    'review':    "I'm your Reviewer. All phases are complete — let me analyse every artifact, remove duplicates, and polish the descriptions so the knowledge base is clean and consistent."
+} %}
+
 <div class="flex h-screen" x-data="planningSession()">
 
     <!-- ================================================================
-         LEFT SIDEBAR — project list / navigation
+         LEFT SIDEBAR — document tree
     ================================================================ -->
-    <aside class="w-48 bg-white border-r border-gray-200 flex flex-col shrink-0">
-        <div class="p-3 border-b border-gray-200">
-            <a href="/" class="text-sm text-gray-500 hover:text-gray-700">← Projects</a>
-        </div>
-        <div class="p-3">
-            <p class="text-xs uppercase text-gray-400 font-semibold mb-2">Current</p>
-            <p class="text-sm font-medium text-blue-600 truncate">{{ project.name }}</p>
-            <span class="text-xs text-gray-400">{{ project.status }}</span>
-        </div>
-        <div class="mt-auto p-3 border-t border-gray-200 space-y-1">
-            <a href="/projects/{{ project.id }}/export/tasks"
-               class="block text-xs text-gray-500 hover:text-gray-700">
-                📦 Export Tasks
-            </a>
-            <a href="/projects/{{ project.id }}/export/arc42"
-               class="block text-xs text-gray-500 hover:text-gray-700">
-                📄 Export arc42
-            </a>
+    <aside class="w-64 bg-white border-r border-gray-200 flex flex-col shrink-0 overflow-hidden">
+        <div
+            id="doc-sidebar-content"
+            class="flex flex-col h-full"
+            hx-get="/projects/{{ project.id }}/doc-tree"
+            hx-trigger="load"
+        >
+            <!-- skeleton while loading -->
+            <div class="p-3 border-b border-gray-200">
+                <div class="h-3 bg-gray-100 rounded w-16 mb-2"></div>
+                <div class="h-4 bg-gray-100 rounded w-32"></div>
+            </div>
+            <div class="p-3 space-y-2">
+                <div class="h-3 bg-gray-100 rounded w-24"></div>
+                <div class="h-3 bg-gray-100 rounded w-36"></div>
+                <div class="h-3 bg-gray-100 rounded w-28"></div>
+            </div>
         </div>
     </aside>
 
@@ -33,64 +42,121 @@
     ================================================================ -->
     <main class="flex-1 flex flex-col min-w-0">
 
-        <!-- Header bar with active persona badge -->
-        <div class="bg-white border-b border-gray-200 px-5 py-3 flex items-center gap-3">
-            <span class="text-sm font-medium text-gray-700">🎭 Active role:</span>
-            <span
-                id="persona-badge"
-                class="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-700 font-medium"
-                x-text="personaLabels[activePersona] || 'Business Analyst'"
-            ></span>
+        <!-- Phase stepper -->
+        <div class="bg-white border-b border-gray-200 px-4 py-2.5 flex items-center gap-1 overflow-x-auto shrink-0">
+            <template x-for="(phase, i) in phases" :key="phase.key">
+                <div class="flex items-center gap-1 shrink-0">
+                    <button
+                        @click="phase.unlocked && switchTab(phase.key)"
+                        :title="!phase.unlocked ? 'Complete the previous phase first' : phase.label"
+                        :class="{
+                            'border-blue-500 bg-blue-50 text-blue-700 shadow-sm': activeTab === phase.key,
+                            'border-green-300 bg-green-50 text-green-700': phase.complete && activeTab !== phase.key,
+                            'border-gray-200 text-gray-600 hover:bg-gray-50 cursor-pointer': phase.unlocked && !phase.complete && activeTab !== phase.key,
+                            'border-gray-200 text-gray-300 cursor-not-allowed opacity-60': !phase.unlocked,
+                        }"
+                        class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all"
+                    >
+                        <span x-text="phase.complete ? '✓' : phase.icon"></span>
+                        <span x-text="phase.label"></span>
+                    </button>
+                    <span x-show="i < phases.length - 1" class="text-gray-300 text-xs select-none">›</span>
+                </div>
+            </template>
+
+            <!-- Phase-unlocked banner -->
+            <div
+                x-show="unlockedBanner"
+                x-transition.opacity
+                class="ml-auto text-xs text-green-600 bg-green-50 border border-green-200 rounded-lg px-3 py-1 flex items-center gap-1.5 shrink-0"
+            >
+                <span>🎉</span>
+                <span x-text="unlockedBanner"></span>
+            </div>
         </div>
 
-        <!-- Message list -->
-        <div
-            id="messages"
-            class="flex-1 overflow-y-auto px-5 py-4 space-y-4"
-        >
-            <!-- Welcome message -->
-            <div class="flex gap-3">
-                <div class="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs shrink-0 mt-0.5">
-                    AI
+        <!-- Message area — one pane per tab, shown/hidden via x-show -->
+        <div id="messages" class="flex-1 overflow-y-auto px-5 py-4 min-h-0">
+
+            {% for tab_key in ['ba', 'pm', 'architect', 'tdd', 'review'] %}
+            <div
+                x-show="activeTab === '{{ tab_key }}'"
+                class="space-y-4"
+                id="tab-pane-{{ tab_key }}"
+            >
+                {% set tab_history = history_by_tab.get(tab_key, []) %}
+                {% if not tab_history %}
+                <!-- Welcome message for this tab (shown before any messages) -->
+                <div class="flex gap-3">
+                    <div class="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs shrink-0 mt-0.5 select-none">AI</div>
+                    <div class="bg-white border border-gray-200 rounded-2xl rounded-tl-sm px-4 py-3 max-w-xl text-sm leading-relaxed">
+                        {{ WELCOME[tab_key] }}
+                    </div>
                 </div>
-                <div class="bg-white border border-gray-200 rounded-2xl rounded-tl-sm px-4 py-3 max-w-xl text-sm leading-relaxed">
-                    Hi! I'm here to help you plan <strong>{{ project.name }}</strong>.
-                    Let's start simple — tell me about the problem you're trying to solve.
-                    Who's it for, and what's frustrating them right now?
+                {% else %}
+                <!-- History messages for this tab -->
+                {% for msg in tab_history %}
+                    {% if msg.role == 'user' %}
+                    <div class="flex gap-3 justify-end">
+                        <div class="bg-blue-600 text-white rounded-2xl rounded-tr-sm px-4 py-3 max-w-xl text-sm leading-relaxed message-content">{{ msg.content }}</div>
+                    </div>
+                    {% else %}
+                    <div class="flex gap-3">
+                        <div class="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs shrink-0 mt-0.5 select-none">AI</div>
+                        <div class="bg-white border border-gray-200 rounded-2xl rounded-tl-sm px-4 py-3 max-w-xl text-sm leading-relaxed message-content prose-content history-md">{{ msg.content }}</div>
+                    </div>
+                    {% endif %}
+                {% endfor %}
+                {% endif %}
+            </div>
+            {% endfor %}
+
+            <!-- Typing indicator (shared, always at bottom of scroll container) -->
+            <div id="typing-indicator" class="hidden flex gap-3 mt-4">
+                <div class="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs shrink-0 mt-0.5 select-none">AI</div>
+                <div class="bg-white border border-gray-200 rounded-2xl rounded-tl-sm px-4 py-3 text-sm text-gray-400 flex items-center gap-2">
+                    <span class="inline-flex gap-1">
+                        <span class="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style="animation-delay:0ms"></span>
+                        <span class="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style="animation-delay:150ms"></span>
+                        <span class="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style="animation-delay:300ms"></span>
+                    </span>
+                    <span class="text-gray-400">thinking…</span>
                 </div>
             </div>
         </div>
 
-        <!-- Typing indicator (hidden until streaming) -->
-        <div id="typing-indicator" class="hidden px-5 pb-2">
-            <div class="flex gap-3">
-                <div class="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs shrink-0">
-                    AI
-                </div>
-                <div class="bg-white border border-gray-200 rounded-2xl rounded-tl-sm px-4 py-3 text-sm text-gray-400">
-                    <span class="animate-pulse">thinking…</span>
-                </div>
+        <!-- Quick actions bar -->
+        <div class="border-t border-gray-100 bg-gray-50 px-5 py-2 shrink-0 overflow-x-auto">
+            <div class="flex gap-1.5 min-w-max">
+                <template x-for="action in quickActions" :key="action.label">
+                    <button
+                        @click="submitMessage(action.prompt)"
+                        :disabled="sending"
+                        class="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md border border-gray-200 bg-white text-gray-600 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 disabled:opacity-40 transition-colors whitespace-nowrap shrink-0"
+                    >
+                        <span x-text="action.icon" class="text-sm leading-none"></span>
+                        <span x-text="action.label"></span>
+                    </button>
+                </template>
             </div>
         </div>
 
-        <!-- Input form — plain HTML form, submitted via fetch() not HTMX
-             (HTMX clears the textarea in before-request before it reads the value) -->
-        <div class="border-t border-gray-200 bg-white px-5 py-3">
+        <!-- Input form -->
+        <div class="border-t border-gray-200 bg-white px-5 py-3 shrink-0">
             <form id="chat-form" class="flex gap-2" @submit.prevent="submitMessage()">
                 <textarea
                     id="message-input"
                     name="content"
                     rows="1"
-                    placeholder="Type your message... (Enter to send)"
+                    :placeholder="'Message ' + (phases.find(p => p.key === activeTab)?.label || 'AI') + '… (Enter to send)'"
                     class="flex-1 border border-gray-300 rounded-xl px-4 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
                     @keydown.enter.exact.prevent="submitMessage()"
                     @input="autoResize($event.target)"
                 ></textarea>
                 <button
                     type="submit"
-                    id="send-btn"
                     :disabled="sending"
-                    class="bg-blue-600 text-white px-4 py-2 rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition text-sm"
+                    class="bg-blue-600 text-white px-4 py-2 rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition text-sm shrink-0"
                 >
                     <span x-show="!sending">Send</span>
                     <span x-show="sending">…</span>
@@ -111,7 +177,7 @@
         <div class="p-3 border-b border-gray-200">
             <p class="text-xs uppercase text-gray-400 font-semibold">Knowledge Model</p>
         </div>
-        <div class="p-3 text-sm text-gray-400">Loading...</div>
+        <div class="p-3 text-sm text-gray-400">Loading…</div>
     </aside>
 
 </div>
@@ -119,15 +185,86 @@
 <script>
 const PROJECT_ID = "{{ project.id }}";
 
+// Render markdown in history bubbles (already loaded from DB)
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.history-md').forEach(el => {
+        el.innerHTML = marked.parse(el.textContent);
+    });
+    scrollToBottom();
+});
+
+const QUICK_ACTIONS = {
+    ba: [
+        { icon: '❓', label: 'Ask me clarifying questions',   prompt: 'Please ask me targeted clarifying questions to better understand the problem, users, and their pain points.' },
+        { icon: '👤', label: 'Define user personas',           prompt: 'Help me define the key user personas for this project — who they are, their goals, and frustrations.' },
+        { icon: '🎯', label: 'Identify success metrics',      prompt: 'What does success look like for this project? Help me define measurable outcomes.' },
+        { icon: '⚠️',  label: 'Identify risks & assumptions', prompt: 'What are the key assumptions we are making? What could invalidate this project?' },
+        { icon: '📋', label: 'Summarise what we have',        prompt: 'Summarise the problem statement and all user stories we have captured so far.' },
+    ],
+    pm: [
+        { icon: '❓', label: 'Ask clarifying questions',      prompt: 'Ask me questions to help prioritise stories and define what belongs in the MVP vs later versions.' },
+        { icon: '🗂️', label: 'Group stories into epics',      prompt: 'Review the current stories and group them into logical epics.' },
+        { icon: '🎯', label: 'Define MVP scope',               prompt: 'Based on the stories, propose which ones are must-haves for the MVP and why.' },
+        { icon: '🔢', label: 'Prioritise all stories',        prompt: 'Go through each story and set its priority (must / should / could / won\'t) with a brief rationale.' },
+        { icon: '🔍', label: 'Find missing stories',          prompt: 'Are there any user stories or edge cases we might have missed given the problem statement?' },
+    ],
+    architect: [
+        { icon: '❓', label: 'Ask clarifying questions',      prompt: 'Ask me targeted questions to clarify technical requirements, constraints, and preferences before designing components.' },
+        { icon: '🏗️',  label: 'Design core components',       prompt: 'Based on the stories and epics, propose the core architectural components with their responsibilities and relationships.' },
+        { icon: '📁', label: 'Suggest file structure',        prompt: 'Propose a concrete file and module structure for this project.' },
+        { icon: '🔄', label: 'Define data flow',              prompt: 'Describe how data flows between the components — inputs, outputs, and integration points.' },
+        { icon: '⚖️',  label: 'Key architecture decisions',   prompt: 'What are the most important architecture decisions we need to make? Walk me through the trade-offs.' },
+        { icon: '⚠️',  label: 'Identify technical risks',     prompt: 'What are the main technical risks or failure points in this design?' },
+    ],
+    tdd: [
+        { icon: '❓', label: 'Ask clarifying questions',      prompt: 'Ask me questions to clarify expected behaviour, edge cases, and acceptance criteria before writing test specs.' },
+        { icon: '✅', label: 'Write test specs',               prompt: 'Write test specifications in Given/When/Then format for each component.' },
+        { icon: '🔲', label: 'Identify edge cases',           prompt: 'What edge cases and error scenarios should we cover in the tests?' },
+        { icon: '📦', label: 'Propose implementation tasks',  prompt: 'Break the work into atomic, independently implementable tasks for the development team.' },
+        { icon: '🔗', label: 'Map task dependencies',         prompt: 'Review the proposed tasks and identify which ones must be completed before others can start.' },
+    ],
+    review: [
+        { icon: '🔎', label: 'Full review',                   prompt: '__FULL_REVIEW__' },
+        { icon: '📖', label: 'Review stories',                prompt: 'Review all user stories for duplicates and quality. Delete duplicates, improve wording where needed.' },
+        { icon: '🏗️',  label: 'Review components',            prompt: 'Review all architectural components for duplicates and unclear responsibilities. Clean them up.' },
+        { icon: '📋', label: 'Review decisions',              prompt: 'Review all architecture decisions for near-duplicates. Merge or delete redundant ones, improve clarity.' },
+        { icon: '✅', label: 'Review test specs',              prompt: 'Review all test specifications. Remove duplicates, fill in any empty Given/When/Then fields.' },
+        { icon: '📦', label: 'Review tasks',                  prompt: 'Review all implementation tasks for duplicates and completeness. Clean up descriptions.' },
+    ],
+};
+
 function planningSession() {
     return {
-        activePersona: 'ba',
-        sending: false,
-        personaLabels: {
-            ba:        '🔍 Business Analyst',
-            pm:        '📋 Product Manager',
-            architect: '🏗️ Architect',
-            tdd:       '✅ TDD Tester',
+        activeTab:      '{{ initial_tab }}',
+        sending:        false,
+        phases:         {{ phases_json | safe }},
+        unlockedBanner: null,
+        _bannerTimer:   null,
+
+        get quickActions() {
+            return QUICK_ACTIONS[this.activeTab] || [];
+        },
+
+        switchTab(key) {
+            this.activeTab = key;
+            this.$nextTick(() => scrollToBottom());
+        },
+
+        // Check if any phases just got unlocked and show the banner
+        updatePhases(newPhases) {
+            const prevByKey = Object.fromEntries(this.phases.map(p => [p.key, p]));
+            for (const p of newPhases) {
+                if (p.unlocked && !prevByKey[p.key]?.unlocked) {
+                    this.showUnlockedBanner(`${p.icon} ${p.label} phase unlocked!`);
+                }
+            }
+            this.phases = newPhases;
+        },
+
+        showUnlockedBanner(msg) {
+            clearTimeout(this._bannerTimer);
+            this.unlockedBanner = msg;
+            this._bannerTimer = setTimeout(() => { this.unlockedBanner = null; }, 4000);
         },
 
         async submitMessage(preset = null) {
@@ -136,23 +273,28 @@ function planningSession() {
             const content = preset ?? input.value.trim();
             if (!content) return;
 
-            // Remove any suggestion chips from the previous turn
+            // Full review is a special multi-pass pipeline, not a regular chat message
+            if (content === '__FULL_REVIEW__') {
+                await this.triggerFullReview();
+                return;
+            }
+
+            // Remove suggestion chips from the previous turn
             document.querySelectorAll('.suggestion-chips').forEach(el => el.remove());
 
-            // Capture value FIRST, then clear
             this.sending = true;
             input.value = '';
             input.style.height = 'auto';
 
-            // Render user bubble immediately
-            appendMessage('user', content);
+            appendMessageToTab('user', content, this.activeTab);
             document.getElementById('typing-indicator').classList.remove('hidden');
+            scrollToBottom();
 
             try {
                 await this.streamChat(content);
             } catch (err) {
                 console.error('Chat error:', err);
-                appendMessage('assistant', '⚠️ Something went wrong. Please try again.');
+                appendMessageToTab('assistant', '⚠️ Something went wrong. Please try again.', this.activeTab);
             } finally {
                 this.sending = false;
                 document.getElementById('typing-indicator').classList.add('hidden');
@@ -164,9 +306,8 @@ function planningSession() {
                     bubble.classList.add('prose-content');
                     delete bubble.dataset.raw;
                 }
-
-                // Remove per-turn markers so next reply starts fresh
                 if (bubble) bubble.removeAttribute('id');
+
                 const prevThinking = document.getElementById('thinking-content');
                 if (prevThinking) prevThinking.removeAttribute('id');
                 const prevWrapper = document.getElementById('thinking-wrapper');
@@ -178,14 +319,10 @@ function planningSession() {
             const response = await fetch(`/projects/${PROJECT_ID}/chat`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: `content=${encodeURIComponent(content)}`,
+                body: `content=${encodeURIComponent(content)}&role_tab=${encodeURIComponent(this.activeTab)}`,
             });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
-            }
-
-            // Read the SSE stream manually
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
             let buffer = '';
@@ -193,37 +330,21 @@ function planningSession() {
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
-
                 buffer += decoder.decode(value, { stream: true });
-
-                // SSE messages are separated by double newlines
                 const parts = buffer.split('\n\n');
-                buffer = parts.pop(); // keep the incomplete trailing chunk
-
-                for (const part of parts) {
-                    this.handleSseBlock(part);
-                }
+                buffer = parts.pop();
+                for (const part of parts) this.handleSseBlock(part);
             }
-
-            // Handle any remaining data
             if (buffer.trim()) this.handleSseBlock(buffer);
         },
 
         handleSseBlock(block) {
-            // Parse a single SSE block: one or more "field: value" lines
-            let eventName = 'message';
-            let dataStr = '';
-
+            let eventName = 'message', dataStr = '';
             for (const line of block.split('\n')) {
-                if (line.startsWith('event: ')) {
-                    eventName = line.slice(7).trim();
-                } else if (line.startsWith('data: ')) {
-                    dataStr = line.slice(6).trim();
-                }
+                if (line.startsWith('event: ')) eventName = line.slice(7).trim();
+                else if (line.startsWith('data: ')) dataStr = line.slice(6).trim();
             }
-
             if (!dataStr) return;
-
             let data = {};
             try { data = JSON.parse(dataStr); } catch { return; }
 
@@ -235,28 +356,36 @@ function planningSession() {
                     this.appendToken(data.content || '');
                     break;
                 case 'tool_used':
+                    // Refresh knowledge panel, doc tree, and phase status
                     htmx.ajax('GET', `/projects/${PROJECT_ID}/knowledge-panel`, {
-                        target: '#knowledge-panel',
-                        swap: 'innerHTML',
+                        target: '#knowledge-panel', swap: 'innerHTML',
                     });
+                    htmx.ajax('GET', `/projects/${PROJECT_ID}/doc-tree`, {
+                        target: '#doc-sidebar-content', swap: 'innerHTML',
+                    });
+                    this.refreshPhaseStatus();
                     break;
                 case 'done':
-                    this.activePersona = data.persona || 'ba';
                     document.getElementById('typing-indicator').classList.add('hidden');
-                    if (data.suggestions?.length) {
-                        this.showSuggestions(data.suggestions);
-                    }
+                    if (data.phases) this.updatePhases(data.phases);
+                    if (data.suggestions?.length) this.showSuggestions(data.suggestions);
                     break;
                 case 'error':
-                    appendMessage('assistant', `⚠️ ${data.message || 'Unknown error'}`);
+                    appendMessageToTab('assistant', `⚠️ ${data.message || 'Unknown error'}`, this.activeTab);
                     break;
             }
+        },
+
+        async refreshPhaseStatus() {
+            try {
+                const resp = await fetch(`/projects/${PROJECT_ID}/phase-status`);
+                if (resp.ok) this.updatePhases(await resp.json());
+            } catch (e) { /* non-critical */ }
         },
 
         appendThinking(text) {
             let content = document.getElementById('thinking-content');
             if (!content) {
-                // Create the thinking block on first thinking token
                 const wrapper = document.createElement('div');
                 wrapper.id = 'thinking-wrapper';
                 wrapper.className = 'flex gap-3';
@@ -272,7 +401,7 @@ function planningSession() {
                                  class="bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 text-xs text-gray-500 font-mono whitespace-pre-wrap max-h-52 overflow-y-auto leading-relaxed"></div>
                         </details>
                     </div>`;
-                document.getElementById('messages').appendChild(wrapper);
+                getActiveTabPane().appendChild(wrapper);
                 document.getElementById('typing-indicator').classList.add('hidden');
                 content = document.getElementById('thinking-content');
             }
@@ -281,23 +410,20 @@ function planningSession() {
         },
 
         appendToken(text) {
-            // Collapse thinking block the moment the real reply starts
             const thinkingWrapper = document.getElementById('thinking-wrapper');
             if (thinkingWrapper && !document.getElementById('streaming-bubble')) {
                 const details = thinkingWrapper.querySelector('details');
                 if (details) details.removeAttribute('open');
             }
-
             let bubble = document.getElementById('streaming-bubble');
             if (!bubble) {
                 const wrapper = createMessageWrapper('assistant');
                 bubble = wrapper.querySelector('.message-content');
                 bubble.id = 'streaming-bubble';
-                bubble.dataset.raw = '';   // accumulate raw markdown here
-                document.getElementById('messages').appendChild(wrapper);
+                bubble.dataset.raw = '';
+                getActiveTabPane().appendChild(wrapper);
                 document.getElementById('typing-indicator').classList.add('hidden');
             }
-            // Show raw text while streaming — renders markdown on done
             bubble.dataset.raw += text;
             bubble.textContent = bubble.dataset.raw;
             scrollToBottom();
@@ -319,9 +445,144 @@ function planningSession() {
                 btn.addEventListener('click', () => self.submitMessage(text));
                 chips.appendChild(btn);
             });
-            document.getElementById('messages').appendChild(chips);
+            getActiveTabPane().appendChild(chips);
             scrollToBottom();
         },
+
+        // ── Full review orchestrator ─────────────────────────────────────────
+
+        async triggerFullReview() {
+            if (this.sending) return;
+            this.sending = true;
+
+            // Insert a progress card into the review tab pane
+            const card = this._createReviewProgressCard();
+            const pane = document.getElementById('tab-pane-review');
+            if (pane) pane.appendChild(card);
+            scrollToBottom();
+
+            try {
+                const response = await fetch(`/projects/${PROJECT_ID}/review/full`, {
+                    method: 'POST',
+                });
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    buffer += decoder.decode(value, { stream: true });
+                    const parts = buffer.split('\n\n');
+                    buffer = parts.pop();
+                    for (const part of parts) this._handleReviewSse(part, card);
+                }
+                if (buffer.trim()) this._handleReviewSse(buffer, card);
+
+            } catch (err) {
+                console.error('Full review error:', err);
+                const errEl = card.querySelector('.review-error');
+                if (errEl) { errEl.textContent = '⚠️ Review failed: ' + err.message; errEl.classList.remove('hidden'); }
+            } finally {
+                this.sending = false;
+                // Refresh panels
+                htmx.ajax('GET', `/projects/${PROJECT_ID}/knowledge-panel`, { target: '#knowledge-panel', swap: 'innerHTML' });
+                htmx.ajax('GET', `/projects/${PROJECT_ID}/doc-tree`, { target: '#doc-sidebar-content', swap: 'innerHTML' });
+            }
+        },
+
+        _handleReviewSse(block, card) {
+            let eventName = 'message', dataStr = '';
+            for (const line of block.split('\n')) {
+                if (line.startsWith('event: ')) eventName = line.slice(7).trim();
+                else if (line.startsWith('data: '))  dataStr  = line.slice(6).trim();
+            }
+            if (!dataStr) return;
+            let data = {};
+            try { data = JSON.parse(dataStr); } catch { return; }
+
+            if (eventName === 'review_progress') {
+                this._updateReviewStep(card, data.step, data.status, data.label);
+            } else if (eventName === 'tool_used') {
+                this._addReviewChange(card, data.name, data.result);
+                // Keep side panels fresh
+                htmx.ajax('GET', `/projects/${PROJECT_ID}/knowledge-panel`, { target: '#knowledge-panel', swap: 'innerHTML' });
+            } else if (eventName === 'done') {
+                if (data.phases) this.updatePhases(data.phases);
+                const summary = card.querySelector('.review-summary');
+                const changes = card.querySelectorAll('.review-change').length;
+                if (summary) summary.textContent = changes > 0
+                    ? `✓ Review complete — ${changes} change${changes !== 1 ? 's' : ''} made`
+                    : '✓ Review complete — no changes needed';
+            }
+        },
+
+        _createReviewProgressCard() {
+            const STEPS = [
+                { key: 'stories',    label: 'Stories' },
+                { key: 'components', label: 'Components' },
+                { key: 'decisions',  label: 'Decisions' },
+                { key: 'specs',      label: 'Test Specs' },
+                { key: 'tasks',      label: 'Tasks' },
+                { key: 'holistic',   label: 'Consistency check' },
+            ];
+            const wrapper = document.createElement('div');
+            wrapper.className = 'flex gap-3';
+            wrapper.innerHTML = `
+                <div class="w-7 h-7 rounded-full bg-purple-600 flex items-center justify-center text-white text-xs shrink-0 mt-0.5 select-none">🔎</div>
+                <div class="bg-white border border-gray-200 rounded-2xl rounded-tl-sm px-4 py-3 max-w-xl w-full text-sm">
+                    <p class="font-medium text-gray-700 mb-2">Running full review…</p>
+                    <div class="review-steps space-y-1 mb-3">
+                        ${STEPS.map(s => `
+                        <div class="review-step flex items-center gap-2 text-xs text-gray-400" data-step="${s.key}">
+                            <span class="step-icon w-4 text-center">○</span>
+                            <span>${s.label}</span>
+                        </div>`).join('')}
+                    </div>
+                    <div class="review-changes space-y-1 hidden"></div>
+                    <div class="review-summary mt-2 text-xs text-green-600 font-medium hidden"></div>
+                    <div class="review-error mt-2 text-xs text-red-500 hidden"></div>
+                </div>`;
+            return wrapper;
+        },
+
+        _updateReviewStep(card, stepKey, status, label) {
+            const el = card.querySelector(`[data-step="${stepKey}"]`);
+            if (!el) return;
+            const icon = el.querySelector('.step-icon');
+            if (status === 'running') {
+                el.classList.remove('text-gray-400');
+                el.classList.add('text-blue-600');
+                icon.textContent = '⟳';
+            } else if (status === 'done') {
+                el.classList.remove('text-blue-600', 'text-gray-400');
+                el.classList.add('text-green-600');
+                icon.textContent = '✓';
+            }
+            scrollToBottom();
+        },
+
+        _addReviewChange(card, toolName, result) {
+            const container = card.querySelector('.review-changes');
+            if (!container) return;
+            container.classList.remove('hidden');
+            const icons = { delete_story: '🗑️', delete_component: '🗑️', delete_decision: '🗑️',
+                            delete_test_spec: '🗑️', delete_task: '🗑️',
+                            update_component: '✏️', update_decision: '✏️', update_test_spec: '✏️',
+                            update_task: '✏️', update_user_story: '✏️' };
+            const div = document.createElement('div');
+            div.className = 'review-change flex items-start gap-1.5 text-xs text-gray-500';
+            div.innerHTML = `<span>${icons[toolName] || '•'}</span><span>${result}</span>`;
+            container.appendChild(div);
+            // Show summary area once it has content
+            const summary = card.querySelector('.review-summary');
+            if (summary) summary.classList.remove('hidden');
+            scrollToBottom();
+        },
+
+        // ── End full review ──────────────────────────────────────────────────
 
         autoResize(el) {
             el.style.height = 'auto';
@@ -330,10 +591,24 @@ function planningSession() {
     };
 }
 
-function appendMessage(role, content) {
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function getActiveTabPane() {
+    // Find the currently visible tab pane (x-show = true means display != none)
+    const panes = document.querySelectorAll('[id^="tab-pane-"]');
+    for (const p of panes) {
+        if (p.style.display !== 'none') return p;
+    }
+    // Fallback: messages container itself
+    return document.getElementById('messages');
+}
+
+function appendMessageToTab(role, content, tabKey) {
+    const pane = document.getElementById(`tab-pane-${tabKey}`);
+    if (!pane) return;
     const wrapper = createMessageWrapper(role);
     wrapper.querySelector('.message-content').textContent = content;
-    document.getElementById('messages').appendChild(wrapper);
+    pane.appendChild(wrapper);
     scrollToBottom();
 }
 

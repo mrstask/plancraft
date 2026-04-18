@@ -5,8 +5,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from database import init_db
-from routers import projects, chat, export
+from database import init_db, migrate_db
+from routers import projects, chat, export, docs
 
 logging.basicConfig(
     level=logging.INFO,
@@ -19,6 +19,7 @@ logging.getLogger("sqlalchemy").setLevel(logging.WARNING)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    await migrate_db()
     yield
 
 
@@ -29,6 +30,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 app.include_router(projects.router)
 app.include_router(chat.router)
 app.include_router(export.router)
+app.include_router(docs.router)
 
 
 if __name__ == "__main__":

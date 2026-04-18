@@ -3,6 +3,7 @@ from roles.business_analyst import BusinessAnalystRole
 from roles.product_manager import ProductManagerRole
 from roles.architect import ArchitectRole
 from roles.tdd_tester import TDDTesterRole
+from roles.reviewer import ReviewerRole
 
 __all__ = [
     "BaseRole",
@@ -10,4 +11,5 @@ __all__ = [
     "ProductManagerRole",
     "ArchitectRole",
     "TDDTesterRole",
+    "ReviewerRole",
 ]

@@ -1,9 +1,21 @@
 """Knowledge model service — CRUD over the structured project data."""
 from __future__ import annotations
 
+from difflib import SequenceMatcher
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+
+
+def _similarity(a: str, b: str) -> float:
+    """Return a 0-1 similarity ratio between two strings (case-insensitive)."""
+    return SequenceMatcher(None, a.lower(), b.lower()).ratio()
+
+
+def _decision_fingerprint(title: str, decision: str) -> str:
+    """Combine title + decision text for a richer similarity signal."""
+    return f"{title} {decision}"
 
 from models.db import (
     Project, UserStory, AcceptanceCriterion, Epic, Constraint,
@@ -15,6 +27,7 @@ from models.domain import (
     AddUserStoryArgs, UpdateUserStoryArgs, AddEpicArgs, RecordConstraintArgs,
     AddComponentArgs, RecordDecisionArgs, AddTestSpecArgs, ProposeTaskArgs,
     SetProblemStatementArgs,
+    UpdateComponentArgs, UpdateDecisionArgs, UpdateTestSpecArgs, UpdateTaskArgs,
 )
 
 
@@ -40,7 +53,7 @@ class KnowledgeService:
         components = comp_result.scalars().all()
 
         dec_result = await self.db.execute(
-            select(ArchitectureDecision).where(ArchitectureDecision.project_id == project_id).limit(5)
+            select(ArchitectureDecision).where(ArchitectureDecision.project_id == project_id)
         )
         decisions = dec_result.scalars().all()
 
@@ -92,6 +105,18 @@ class KnowledgeService:
         return f"Problem statement set."
 
     async def add_epic(self, project_id: str, args: AddEpicArgs) -> str:
+        # Upsert by title (case-insensitive) to avoid duplicates
+        existing = await self.db.execute(
+            select(Epic).where(
+                Epic.project_id == project_id,
+                Epic.title.ilike(args.title),
+            )
+        )
+        epic = existing.scalar_one_or_none()
+        if epic:
+            epic.description = args.description or epic.description
+            await self.db.commit()
+            return f"Epic updated: {epic.id}"
         epic = Epic(project_id=project_id, title=args.title, description=args.description)
         self.db.add(epic)
         await self.db.commit()
@@ -143,6 +168,23 @@ class KnowledgeService:
         return "Constraint recorded."
 
     async def add_component(self, project_id: str, args: AddComponentArgs) -> str:
+        # Upsert by name (case-insensitive) to avoid duplicates across retries
+        existing = await self.db.execute(
+            select(Component).where(
+                Component.project_id == project_id,
+                Component.name.ilike(args.name),
+            )
+        )
+        component = existing.scalar_one_or_none()
+        if component:
+            component.responsibility = args.responsibility or component.responsibility
+            if args.component_type:
+                component.component_type = args.component_type
+            if args.file_paths:
+                component.file_paths = args.file_paths
+            await self.db.commit()
+            return f"Component updated: {component.id}"
+
         component = Component(
             project_id=project_id,
             name=args.name,
@@ -161,6 +203,36 @@ class KnowledgeService:
         return f"Component added: {component.id}"
 
     async def record_decision(self, project_id: str, args: RecordDecisionArgs) -> str:
+        # Fuzzy dedup: compare against ALL existing decisions using title+text fingerprint.
+        # Threshold 0.55 catches near-duplicates ("Layered Architecture Adoption" ≈
+        # "Implementing Layered Architecture") without merging genuinely different decisions.
+        all_decisions = await self.get_all_decisions(project_id)
+        new_fp = _decision_fingerprint(args.title, args.decision)
+
+        best_match = None
+        best_score = 0.0
+        for dec in all_decisions:
+            # Title similarity is a more reliable signal than full-text for decisions —
+            # the LLM rephrases the same concept rather than changing the underlying text.
+            score = _similarity(dec.title, args.title)
+            if score > best_score:
+                best_score = score
+                best_match = dec
+
+        if best_match and best_score >= 0.50:
+            # Merge: keep the existing record, enrich it with any new info
+            if args.context and len(args.context) > len(best_match.context or ""):
+                best_match.context = args.context
+            if len(args.decision) > len(best_match.decision):
+                best_match.decision = args.decision
+            existing_cons = best_match.consequences or {}
+            best_match.consequences = {
+                "positive": args.consequences_positive or existing_cons.get("positive", []),
+                "negative": args.consequences_negative or existing_cons.get("negative", []),
+            }
+            await self.db.commit()
+            return f"Decision merged into existing '{best_match.title}': {best_match.id}"
+
         decision = ArchitectureDecision(
             project_id=project_id,
             title=args.title,
@@ -177,6 +249,24 @@ class KnowledgeService:
         return f"Decision recorded: {decision.id}"
 
     async def add_test_spec(self, project_id: str, args: AddTestSpecArgs) -> str:
+        # Upsert by description (case-insensitive) to avoid duplicates
+        existing = await self.db.execute(
+            select(TestSpec).where(
+                TestSpec.project_id == project_id,
+                TestSpec.description.ilike(args.description),
+            )
+        )
+        spec = existing.scalar_one_or_none()
+        if spec:
+            spec.test_type       = args.test_type or spec.test_type
+            spec.given_context   = args.given_context or spec.given_context
+            spec.when_action     = args.when_action or spec.when_action
+            spec.then_expectation= args.then_expectation or spec.then_expectation
+            if args.story_id:     spec.story_id     = args.story_id
+            if args.component_id: spec.component_id = args.component_id
+            await self.db.commit()
+            return f"Test spec updated: {spec.id}"
+
         spec = TestSpec(
             project_id=project_id,
             story_id=args.story_id,
@@ -196,7 +286,7 @@ class KnowledgeService:
         task = Task(
             project_id=project_id,
             title=args.title,
-            description=args.description,
+            description=args.description or args.title,
             complexity=args.complexity,
             file_paths=args.file_paths,
             acceptance_criteria=args.acceptance_criteria,
@@ -214,6 +304,258 @@ class KnowledgeService:
         await self.db.commit()
         await self.db.refresh(task)
         return f"Task proposed: {task.id}"
+
+    # ------------------------------------------------------------------
+    # Full-list fetchers (for the document tree sidebar)
+    # ------------------------------------------------------------------
+
+    async def get_all_epics(self, project_id: str):
+        r = await self.db.execute(
+            select(Epic).where(Epic.project_id == project_id).order_by(Epic.created_at)
+        )
+        return r.scalars().all()
+
+    async def get_all_stories(self, project_id: str):
+        r = await self.db.execute(
+            select(UserStory)
+            .options(selectinload(UserStory.acceptance_criteria), selectinload(UserStory.epic))
+            .where(UserStory.project_id == project_id)
+            .order_by(UserStory.created_at)
+        )
+        return r.scalars().all()
+
+    async def get_all_components(self, project_id: str):
+        r = await self.db.execute(
+            select(Component).where(Component.project_id == project_id).order_by(Component.created_at)
+        )
+        return r.scalars().all()
+
+    async def get_all_decisions(self, project_id: str):
+        r = await self.db.execute(
+            select(ArchitectureDecision)
+            .where(ArchitectureDecision.project_id == project_id)
+            .order_by(ArchitectureDecision.created_at)
+        )
+        return r.scalars().all()
+
+    async def get_all_constraints(self, project_id: str):
+        r = await self.db.execute(
+            select(Constraint).where(Constraint.project_id == project_id).order_by(Constraint.created_at)
+        )
+        return r.scalars().all()
+
+    async def get_all_test_specs(self, project_id: str):
+        r = await self.db.execute(
+            select(TestSpec).where(TestSpec.project_id == project_id).order_by(TestSpec.created_at)
+        )
+        return r.scalars().all()
+
+    async def get_all_tasks(self, project_id: str):
+        r = await self.db.execute(
+            select(Task).where(Task.project_id == project_id).order_by(Task.created_at)
+        )
+        return r.scalars().all()
+
+    # ------------------------------------------------------------------
+    # Single-item fetchers (for the detail view)
+    # ------------------------------------------------------------------
+
+    async def get_story(self, story_id: str):
+        r = await self.db.execute(
+            select(UserStory)
+            .options(selectinload(UserStory.acceptance_criteria), selectinload(UserStory.epic))
+            .where(UserStory.id == story_id)
+        )
+        return r.scalar_one_or_none()
+
+    async def get_component(self, component_id: str):
+        r = await self.db.execute(select(Component).where(Component.id == component_id))
+        return r.scalar_one_or_none()
+
+    async def get_decision(self, decision_id: str):
+        r = await self.db.execute(select(ArchitectureDecision).where(ArchitectureDecision.id == decision_id))
+        return r.scalar_one_or_none()
+
+    async def get_test_spec(self, spec_id: str):
+        r = await self.db.execute(select(TestSpec).where(TestSpec.id == spec_id))
+        return r.scalar_one_or_none()
+
+    async def get_task(self, task_id: str):
+        r = await self.db.execute(select(Task).where(Task.id == task_id))
+        return r.scalar_one_or_none()
+
+    # ------------------------------------------------------------------
+    # Review phase — update / delete
+    # ------------------------------------------------------------------
+
+    async def delete_story(self, story_id: str) -> str:
+        r = await self.db.execute(select(UserStory).where(UserStory.id == story_id))
+        obj = r.scalar_one_or_none()
+        if not obj:
+            return f"Story {story_id} not found."
+        await self.db.delete(obj)
+        await self.db.commit()
+        return f"Story deleted: {story_id}"
+
+    async def update_component(self, args: UpdateComponentArgs) -> str:
+        r = await self.db.execute(select(Component).where(Component.id == args.component_id))
+        obj = r.scalar_one_or_none()
+        if not obj:
+            return f"Component {args.component_id} not found."
+        if args.name is not None:
+            obj.name = args.name
+        if args.responsibility is not None:
+            obj.responsibility = args.responsibility
+        if args.component_type is not None:
+            obj.component_type = args.component_type
+        await self.db.commit()
+        return f"Component updated: {args.component_id}"
+
+    async def delete_component(self, component_id: str) -> str:
+        r = await self.db.execute(select(Component).where(Component.id == component_id))
+        obj = r.scalar_one_or_none()
+        if not obj:
+            return f"Component {component_id} not found."
+        await self.db.delete(obj)
+        await self.db.commit()
+        return f"Component deleted: {component_id}"
+
+    async def update_decision(self, args: UpdateDecisionArgs) -> str:
+        r = await self.db.execute(
+            select(ArchitectureDecision).where(ArchitectureDecision.id == args.decision_id)
+        )
+        obj = r.scalar_one_or_none()
+        if not obj:
+            return f"Decision {args.decision_id} not found."
+        if args.title is not None:
+            obj.title = args.title
+        if args.context is not None:
+            obj.context = args.context
+        if args.decision is not None:
+            obj.decision = args.decision
+        await self.db.commit()
+        return f"Decision updated: {args.decision_id}"
+
+    async def delete_decision(self, decision_id: str) -> str:
+        r = await self.db.execute(
+            select(ArchitectureDecision).where(ArchitectureDecision.id == decision_id)
+        )
+        obj = r.scalar_one_or_none()
+        if not obj:
+            return f"Decision {decision_id} not found."
+        await self.db.delete(obj)
+        await self.db.commit()
+        return f"Decision deleted: {decision_id}"
+
+    async def update_test_spec(self, args: UpdateTestSpecArgs) -> str:
+        r = await self.db.execute(select(TestSpec).where(TestSpec.id == args.spec_id))
+        obj = r.scalar_one_or_none()
+        if not obj:
+            return f"Test spec {args.spec_id} not found."
+        if args.description is not None:
+            obj.description = args.description
+        if args.given_context is not None:
+            obj.given_context = args.given_context
+        if args.when_action is not None:
+            obj.when_action = args.when_action
+        if args.then_expectation is not None:
+            obj.then_expectation = args.then_expectation
+        if args.test_type is not None:
+            obj.test_type = args.test_type
+        await self.db.commit()
+        return f"Test spec updated: {args.spec_id}"
+
+    async def delete_test_spec(self, spec_id: str) -> str:
+        r = await self.db.execute(select(TestSpec).where(TestSpec.id == spec_id))
+        obj = r.scalar_one_or_none()
+        if not obj:
+            return f"Test spec {spec_id} not found."
+        await self.db.delete(obj)
+        await self.db.commit()
+        return f"Test spec deleted: {spec_id}"
+
+    async def update_task(self, args: UpdateTaskArgs) -> str:
+        r = await self.db.execute(select(Task).where(Task.id == args.task_id))
+        obj = r.scalar_one_or_none()
+        if not obj:
+            return f"Task {args.task_id} not found."
+        if args.title is not None:
+            obj.title = args.title
+        if args.description is not None:
+            obj.description = args.description
+        if args.complexity is not None:
+            obj.complexity = args.complexity
+        await self.db.commit()
+        return f"Task updated: {args.task_id}"
+
+    async def delete_task(self, task_id: str) -> str:
+        r = await self.db.execute(select(Task).where(Task.id == task_id))
+        obj = r.scalar_one_or_none()
+        if not obj:
+            return f"Task {task_id} not found."
+        await self.db.delete(obj)
+        await self.db.commit()
+        return f"Task deleted: {task_id}"
+
+    async def get_full_review_context(self, project_id: str) -> str:
+        """Return a formatted string of ALL artifacts with IDs for the reviewer LLM."""
+        project = await self._get_project(project_id)
+        stories    = await self.get_all_stories(project_id)
+        components = await self.get_all_components(project_id)
+        decisions  = await self.get_all_decisions(project_id)
+        specs      = await self.get_all_test_specs(project_id)
+        tasks      = await self.get_all_tasks(project_id)
+
+        lines = [
+            f"Project: {project.name}",
+            f"Problem: {project.description or '(none)'}",
+            "",
+            "=" * 60,
+            "ALL ARTIFACTS — review every category for duplicates and quality",
+            "=" * 60,
+        ]
+
+        lines += [f"\n### STORIES ({len(stories)})"]
+        for s in stories:
+            lines.append(f"  [{s.id}]")
+            lines.append(f"    As a {s.as_a}, I want {s.i_want}, so that {s.so_that}")
+            lines.append(f"    Priority: {s.priority}")
+            if s.acceptance_criteria:
+                for ac in s.acceptance_criteria:
+                    lines.append(f"    AC: {ac.criterion}")
+
+        lines += [f"\n### COMPONENTS ({len(components)})"]
+        for c in components:
+            lines.append(f"  [{c.id}]")
+            lines.append(f"    Name: {c.name}")
+            lines.append(f"    Type: {c.component_type or '–'}")
+            lines.append(f"    Responsibility: {c.responsibility}")
+
+        lines += [f"\n### ARCHITECTURE DECISIONS ({len(decisions)})"]
+        for d in decisions:
+            lines.append(f"  [{d.id}]")
+            lines.append(f"    Title: {d.title}")
+            lines.append(f"    Decision: {d.decision}")
+            if d.context:
+                lines.append(f"    Context: {d.context}")
+
+        lines += [f"\n### TEST SPECS ({len(specs)})"]
+        for sp in specs:
+            lines.append(f"  [{sp.id}]")
+            lines.append(f"    Description: {sp.description}")
+            lines.append(f"    Type: {sp.test_type}")
+            lines.append(f"    Given: {sp.given_context or '–'}")
+            lines.append(f"    When: {sp.when_action or '–'}")
+            lines.append(f"    Then: {sp.then_expectation or '–'}")
+
+        lines += [f"\n### TASKS ({len(tasks)})"]
+        for t in tasks:
+            lines.append(f"  [{t.id}]")
+            lines.append(f"    Title: {t.title}")
+            lines.append(f"    Complexity: {t.complexity}")
+            lines.append(f"    Description: {t.description}")
+
+        return "\n".join(lines)
 
     # ------------------------------------------------------------------
     # Helpers
