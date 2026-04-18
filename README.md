@@ -37,7 +37,7 @@ The exported task DAG is directly consumable by autonomous agent systems (e.g. [
 - **Centralized tool-calling discipline** — a shared LLM tool registry controls schemas, phase access, and dispatch in one place, with a fallback extraction pass when the model describes artifacts in prose
 - **Deduplication** — exact-match upserts for components/epics/test specs; fuzzy `SequenceMatcher` deduplication for architecture decisions (threshold 0.50)
 - **Multi-pass review** — the Reviewer runs 5 focused category passes then a holistic consistency check, each with atomic context so the model stays precise
-- **Safer markdown rendering** — assistant/user markdown is rendered with `marked` and sanitized with DOMPurify before entering the DOM
+- **Safer markdown rendering** — assistant/user markdown is rendered with `marked` and sanitized with DOMPurify before entering the DOM; if DOMPurify fails to load the renderer returns empty string rather than injecting raw HTML
 - **Modular session UI** — the main planning screen now loads its controller from `static/js/session/` instead of embedding all interaction logic inside the template
 - **Focused regression coverage** — unit tests cover phase gating, tool registration, MVP persistence, scoped artifact lookups, and story acceptance-criteria updates
 - **arc42 export** — full 12-section architecture documentation generated from the knowledge base
@@ -216,7 +216,9 @@ Each pass is atomic — the model stays focused, avoids context dilution, and th
 ## Development notes
 
 - Startup migrations are version-tracked in a `schema_migrations` table and run after `create_all()`.
-- Document-detail routes are project-scoped, so artifacts cannot be fetched by raw ID across projects.
+- All artifact reads **and writes** are project-scoped — the `project_id` is validated in every mutation's WHERE clause, so an artifact from Project A cannot be modified by a session in Project B even if the UUID is known.
+- SQLite foreign-key enforcement is enabled on every connection (`PRAGMA foreign_keys=ON`) and junction tables use `ON DELETE CASCADE`, so deleting a story or test spec automatically cleans up orphaned task-link rows.
+- Chat history sent to the model is capped at `MAX_HISTORY_MESSAGES` (default 50) to prevent context-window overflow as sessions grow.
 - The PM and TDD contexts include full artifact IDs when the model needs to make linking or scope-setting tool calls.
 
 ---

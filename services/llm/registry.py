@@ -95,7 +95,6 @@ ALL_TOOLS: tuple[ToolDefinition, ...] = (
         UpdateUserStoryArgs,
         "update_user_story",
         frozenset({"ba", "pm", "review"}),
-        project_scoped=False,
     ),
     ToolDefinition(
         "record_constraint",
@@ -138,7 +137,6 @@ ALL_TOOLS: tuple[ToolDefinition, ...] = (
         DeleteStoryArgs,
         "delete_story",
         frozenset({"review"}),
-        project_scoped=False,
     ),
     ToolDefinition(
         "update_component",
@@ -146,7 +144,6 @@ ALL_TOOLS: tuple[ToolDefinition, ...] = (
         UpdateComponentArgs,
         "update_component",
         frozenset({"review"}),
-        project_scoped=False,
     ),
     ToolDefinition(
         "delete_component",
@@ -154,7 +151,6 @@ ALL_TOOLS: tuple[ToolDefinition, ...] = (
         DeleteComponentArgs,
         "delete_component",
         frozenset({"review"}),
-        project_scoped=False,
     ),
     ToolDefinition(
         "update_decision",
@@ -162,7 +158,6 @@ ALL_TOOLS: tuple[ToolDefinition, ...] = (
         UpdateDecisionArgs,
         "update_decision",
         frozenset({"review"}),
-        project_scoped=False,
     ),
     ToolDefinition(
         "delete_decision",
@@ -170,7 +165,6 @@ ALL_TOOLS: tuple[ToolDefinition, ...] = (
         DeleteDecisionArgs,
         "delete_decision",
         frozenset({"review"}),
-        project_scoped=False,
     ),
     ToolDefinition(
         "update_test_spec",
@@ -178,7 +172,6 @@ ALL_TOOLS: tuple[ToolDefinition, ...] = (
         UpdateTestSpecArgs,
         "update_test_spec",
         frozenset({"review"}),
-        project_scoped=False,
     ),
     ToolDefinition(
         "delete_test_spec",
@@ -186,7 +179,6 @@ ALL_TOOLS: tuple[ToolDefinition, ...] = (
         DeleteTestSpecArgs,
         "delete_test_spec",
         frozenset({"review"}),
-        project_scoped=False,
     ),
     ToolDefinition(
         "update_task",
@@ -194,7 +186,6 @@ ALL_TOOLS: tuple[ToolDefinition, ...] = (
         UpdateTaskArgs,
         "update_task",
         frozenset({"review"}),
-        project_scoped=False,
     ),
     ToolDefinition(
         "delete_task",
@@ -202,7 +193,6 @@ ALL_TOOLS: tuple[ToolDefinition, ...] = (
         DeleteTaskArgs,
         "delete_task",
         frozenset({"review"}),
-        project_scoped=False,
     ),
 )
 

@@ -109,4 +109,6 @@ class ArtifactQueries(KnowledgeBase):
                 UserStory.id.ilike(f"{story_ref}%"),
             )
         )
-        return r.scalar_one_or_none()
+        rows = r.scalars().all()
+        # Exact match or unique prefix match — reject ambiguous short prefixes
+        return rows[0] if len(rows) == 1 else None

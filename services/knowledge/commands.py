@@ -109,11 +109,11 @@ class ArtifactCommands(KnowledgeBase):
         await self.db.refresh(story)
         return f"User story added: {story.id}"
 
-    async def update_user_story(self, args: UpdateUserStoryArgs) -> str:
+    async def update_user_story(self, project_id: str, args: UpdateUserStoryArgs) -> str:
         result = await self.db.execute(
             select(UserStory)
             .options(selectinload(UserStory.acceptance_criteria))
-            .where(UserStory.id == args.story_id)
+            .where(UserStory.id == args.story_id, UserStory.project_id == project_id)
         )
         story = result.scalar_one_or_none()
         if not story:
@@ -299,8 +299,10 @@ class ArtifactCommands(KnowledgeBase):
         linked = len(linked_spec_ids)
         return f"Task proposed: {task.id} (linked {linked} test spec{'s' if linked != 1 else ''})"
 
-    async def delete_story(self, args: DeleteStoryArgs) -> str:
-        r = await self.db.execute(select(UserStory).where(UserStory.id == args.story_id))
+    async def delete_story(self, project_id: str, args: DeleteStoryArgs) -> str:
+        r = await self.db.execute(
+            select(UserStory).where(UserStory.id == args.story_id, UserStory.project_id == project_id)
+        )
         obj = r.scalar_one_or_none()
         if not obj:
             return f"Story {args.story_id} not found."
@@ -308,8 +310,10 @@ class ArtifactCommands(KnowledgeBase):
         await self.db.commit()
         return f"Story deleted: {args.story_id}"
 
-    async def update_component(self, args: UpdateComponentArgs) -> str:
-        r = await self.db.execute(select(Component).where(Component.id == args.component_id))
+    async def update_component(self, project_id: str, args: UpdateComponentArgs) -> str:
+        r = await self.db.execute(
+            select(Component).where(Component.id == args.component_id, Component.project_id == project_id)
+        )
         obj = r.scalar_one_or_none()
         if not obj:
             return f"Component {args.component_id} not found."
@@ -322,8 +326,10 @@ class ArtifactCommands(KnowledgeBase):
         await self.db.commit()
         return f"Component updated: {args.component_id}"
 
-    async def delete_component(self, args: DeleteComponentArgs) -> str:
-        r = await self.db.execute(select(Component).where(Component.id == args.component_id))
+    async def delete_component(self, project_id: str, args: DeleteComponentArgs) -> str:
+        r = await self.db.execute(
+            select(Component).where(Component.id == args.component_id, Component.project_id == project_id)
+        )
         obj = r.scalar_one_or_none()
         if not obj:
             return f"Component {args.component_id} not found."
@@ -331,9 +337,12 @@ class ArtifactCommands(KnowledgeBase):
         await self.db.commit()
         return f"Component deleted: {args.component_id}"
 
-    async def update_decision(self, args: UpdateDecisionArgs) -> str:
+    async def update_decision(self, project_id: str, args: UpdateDecisionArgs) -> str:
         r = await self.db.execute(
-            select(ArchitectureDecision).where(ArchitectureDecision.id == args.decision_id)
+            select(ArchitectureDecision).where(
+                ArchitectureDecision.id == args.decision_id,
+                ArchitectureDecision.project_id == project_id,
+            )
         )
         obj = r.scalar_one_or_none()
         if not obj:
@@ -347,9 +356,12 @@ class ArtifactCommands(KnowledgeBase):
         await self.db.commit()
         return f"Decision updated: {args.decision_id}"
 
-    async def delete_decision(self, args: DeleteDecisionArgs) -> str:
+    async def delete_decision(self, project_id: str, args: DeleteDecisionArgs) -> str:
         r = await self.db.execute(
-            select(ArchitectureDecision).where(ArchitectureDecision.id == args.decision_id)
+            select(ArchitectureDecision).where(
+                ArchitectureDecision.id == args.decision_id,
+                ArchitectureDecision.project_id == project_id,
+            )
         )
         obj = r.scalar_one_or_none()
         if not obj:
@@ -358,8 +370,10 @@ class ArtifactCommands(KnowledgeBase):
         await self.db.commit()
         return f"Decision deleted: {args.decision_id}"
 
-    async def update_test_spec(self, args: UpdateTestSpecArgs) -> str:
-        r = await self.db.execute(select(TestSpec).where(TestSpec.id == args.spec_id))
+    async def update_test_spec(self, project_id: str, args: UpdateTestSpecArgs) -> str:
+        r = await self.db.execute(
+            select(TestSpec).where(TestSpec.id == args.spec_id, TestSpec.project_id == project_id)
+        )
         obj = r.scalar_one_or_none()
         if not obj:
             return f"Test spec {args.spec_id} not found."
@@ -376,8 +390,10 @@ class ArtifactCommands(KnowledgeBase):
         await self.db.commit()
         return f"Test spec updated: {args.spec_id}"
 
-    async def delete_test_spec(self, args: DeleteTestSpecArgs) -> str:
-        r = await self.db.execute(select(TestSpec).where(TestSpec.id == args.spec_id))
+    async def delete_test_spec(self, project_id: str, args: DeleteTestSpecArgs) -> str:
+        r = await self.db.execute(
+            select(TestSpec).where(TestSpec.id == args.spec_id, TestSpec.project_id == project_id)
+        )
         obj = r.scalar_one_or_none()
         if not obj:
             return f"Test spec {args.spec_id} not found."
@@ -385,8 +401,10 @@ class ArtifactCommands(KnowledgeBase):
         await self.db.commit()
         return f"Test spec deleted: {args.spec_id}"
 
-    async def update_task(self, args: UpdateTaskArgs) -> str:
-        r = await self.db.execute(select(Task).where(Task.id == args.task_id))
+    async def update_task(self, project_id: str, args: UpdateTaskArgs) -> str:
+        r = await self.db.execute(
+            select(Task).where(Task.id == args.task_id, Task.project_id == project_id)
+        )
         obj = r.scalar_one_or_none()
         if not obj:
             return f"Task {args.task_id} not found."
@@ -399,8 +417,10 @@ class ArtifactCommands(KnowledgeBase):
         await self.db.commit()
         return f"Task updated: {args.task_id}"
 
-    async def delete_task(self, args: DeleteTaskArgs) -> str:
-        r = await self.db.execute(select(Task).where(Task.id == args.task_id))
+    async def delete_task(self, project_id: str, args: DeleteTaskArgs) -> str:
+        r = await self.db.execute(
+            select(Task).where(Task.id == args.task_id, Task.project_id == project_id)
+        )
         obj = r.scalar_one_or_none()
         if not obj:
             return f"Task {args.task_id} not found."

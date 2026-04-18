@@ -67,7 +67,12 @@ export function addReviewChange(card, toolName, result) {
     };
     const div = document.createElement('div');
     div.className = 'review-change flex items-start gap-1.5 text-xs text-gray-500';
-    div.innerHTML = `<span>${icons[toolName] || '•'}</span><span>${result}</span>`;
+    const iconSpan = document.createElement('span');
+    iconSpan.textContent = icons[toolName] || '•';
+    const resultSpan = document.createElement('span');
+    resultSpan.textContent = result;
+    div.appendChild(iconSpan);
+    div.appendChild(resultSpan);
     container.appendChild(div);
     const summary = card.querySelector('.review-summary');
     if (summary) {

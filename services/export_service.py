@@ -73,6 +73,14 @@ async def build_arc42(project_id: str, db: AsyncSession) -> str:
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     sections: list[str] = []
 
+    # Build once at the top so section 6 and section 10 share the same counts.
+    # Unknown test_type values fall back to "unit" rather than creating phantom keys.
+    _KNOWN_SPEC_TYPES = ("unit", "integration", "e2e")
+    spec_by_type: dict[str, list] = {"unit": [], "integration": [], "e2e": []}
+    for _sp in data.specs:
+        bucket = _sp.test_type if _sp.test_type in _KNOWN_SPEC_TYPES else "unit"
+        spec_by_type[bucket].append(_sp)
+
     # Header
     sections.append(f"# arc42 Architecture Documentation\n# {data.project_name}")
     sections.append(f"*Generated: {now}*\n\n---")
@@ -149,9 +157,6 @@ async def build_arc42(project_id: str, db: AsyncSession) -> str:
                 task_lines.append(f"   - {ac}")
     task_block = "\n".join(task_lines) if task_lines else _PLACEHOLDER
 
-    spec_by_type: dict[str, list] = {"unit": [], "integration": [], "e2e": []}
-    for sp in data.specs:
-        spec_by_type.setdefault(sp.test_type or "unit", []).append(sp)
     spec_summary_lines = [
         f"- **Unit tests:** {len(spec_by_type['unit'])}",
         f"- **Integration tests:** {len(spec_by_type['integration'])}",

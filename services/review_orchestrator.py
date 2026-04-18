@@ -33,9 +33,6 @@ log = logging.getLogger(__name__)
 
 _client = AsyncOpenAI(base_url=settings.ollama_base_url, api_key="ollama")
 
-# Tools available during review (same subset as the review phase)
-_REVIEW_TOOLS = get_phase_tools("review")
-
 # ---------------------------------------------------------------------------
 # Per-category context builders
 # ---------------------------------------------------------------------------
@@ -211,7 +208,7 @@ async def _run_pass(
             model=settings.tdd_model,
             max_tokens=2048,
             messages=messages,
-            tools=_REVIEW_TOOLS,
+            tools=get_phase_tools("review"),
             tool_choice="auto",   # "required" causes unnecessary calls when nothing to fix
             stream=False,
         )

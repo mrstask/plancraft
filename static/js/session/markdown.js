@@ -2,7 +2,8 @@ function sanitizeHtml(html) {
     if (window.DOMPurify) {
         return window.DOMPurify.sanitize(html);
     }
-    return html;
+    console.error('DOMPurify is not loaded — HTML sanitization is disabled. Raw HTML will NOT be rendered.');
+    return '';
 }
 
 export function renderMarkdown(text) {

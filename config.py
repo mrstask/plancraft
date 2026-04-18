@@ -1,9 +1,16 @@
+import logging
+import warnings
+
 from pydantic_settings import BaseSettings
+
+_log = logging.getLogger(__name__)
+
+_DEFAULT_SECRET_KEY = "dev-secret-change-in-production"
 
 
 class Settings(BaseSettings):
     database_url: str = "sqlite+aiosqlite:///./planning.db"
-    secret_key: str = "dev-secret-change-in-production"
+    secret_key: str = _DEFAULT_SECRET_KEY
     debug: bool = True
 
     # Ollama settings
@@ -21,3 +28,10 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+if not settings.debug and settings.secret_key == _DEFAULT_SECRET_KEY:
+    warnings.warn(
+        "SECRET_KEY is set to the default development value in a non-debug environment. "
+        "Set the SECRET_KEY environment variable before deploying.",
+        stacklevel=1,
+    )

@@ -155,8 +155,8 @@ class Component(Base):
 class ComponentDependency(Base):
     __tablename__ = "component_dependencies"
 
-    from_id = Column(String, ForeignKey("components.id"), primary_key=True)
-    to_id = Column(String, ForeignKey("components.id"), primary_key=True)
+    from_id = Column(String, ForeignKey("components.id", ondelete="CASCADE"), primary_key=True)
+    to_id = Column(String, ForeignKey("components.id", ondelete="CASCADE"), primary_key=True)
 
 
 class ArchitectureDecision(Base):
@@ -219,19 +219,19 @@ class Task(Base):
 class TaskDependency(Base):
     __tablename__ = "task_dependencies"
 
-    task_id = Column(String, ForeignKey("tasks.id"), primary_key=True)
-    depends_on_id = Column(String, ForeignKey("tasks.id"), primary_key=True)
+    task_id = Column(String, ForeignKey("tasks.id", ondelete="CASCADE"), primary_key=True)
+    depends_on_id = Column(String, ForeignKey("tasks.id", ondelete="CASCADE"), primary_key=True)
 
 
 class TaskStory(Base):
     __tablename__ = "task_stories"
 
-    task_id = Column(String, ForeignKey("tasks.id"), primary_key=True)
-    story_id = Column(String, ForeignKey("user_stories.id"), primary_key=True)
+    task_id = Column(String, ForeignKey("tasks.id", ondelete="CASCADE"), primary_key=True)
+    story_id = Column(String, ForeignKey("user_stories.id", ondelete="CASCADE"), primary_key=True)
 
 
 class TaskTestSpec(Base):
     __tablename__ = "task_test_specs"
 
-    task_id = Column(String, ForeignKey("tasks.id"), primary_key=True)
-    spec_id = Column(String, ForeignKey("test_specs.id"), primary_key=True)
+    task_id = Column(String, ForeignKey("tasks.id", ondelete="CASCADE"), primary_key=True)
+    spec_id = Column(String, ForeignKey("test_specs.id", ondelete="CASCADE"), primary_key=True)
