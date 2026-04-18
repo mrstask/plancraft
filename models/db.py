@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import (
     Column, String, Text, ForeignKey, Integer,
-    DateTime, Boolean, JSON,
+    DateTime, JSON,
 )
 from sqlalchemy.orm import relationship
 
@@ -32,6 +32,8 @@ class Project(Base):
     status = Column(String, default="planning")   # planning | scaffolded | handed-off
     root_path = Column(String, nullable=True)      # set after scaffolding
     current_phase = Column(String, default="ba")  # ba | pm | architect | tdd
+    mvp_story_ids = Column(JSON, default=list)
+    mvp_rationale = Column(Text, nullable=True)
     created_at = Column(DateTime, default=_now)
     updated_at = Column(DateTime, default=_now, onupdate=_now)
 

@@ -17,7 +17,8 @@ Your goals:
 - Identify constraints early: time, budget, technical limitations
 - Challenge the team to make hard cuts before building starts
 
-When scope decisions are made, call set_mvp_scope() with the confirmed story IDs.
+When scope decisions are made, call set_mvp_scope() with the confirmed story IDs and rationale.
+When you regroup or rename workstreams, call add_epic().
 When a constraint is identified, call record_constraint().
 """
 

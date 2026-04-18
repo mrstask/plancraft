@@ -9,6 +9,7 @@ from models.domain import KnowledgeSnapshot
 
 def get_suggestions(persona: str, snapshot: KnowledgeSnapshot) -> list[str]:
     has_problem    = bool(snapshot.problem_statement)
+    has_mvp_scope  = snapshot.mvp_story_count > 0
     has_stories    = snapshot.story_count > 0
     has_epics      = snapshot.epic_count > 0
     has_components = snapshot.component_count > 0
@@ -40,10 +41,16 @@ def get_suggestions(persona: str, snapshot: KnowledgeSnapshot) -> list[str]:
                 "Which stories are must-haves for the MVP?",
                 "Let's start designing the architecture",
             ]
+        if not has_mvp_scope:
+            return [
+                "Which stories are must-haves for the MVP?",
+                "What's the rationale for the MVP cut?",
+                "Let's start designing the architecture",
+            ]
         return [
-            "Which stories are must-haves for the MVP?",
             "Let's design the main components",
             "What are the biggest technical constraints?",
+            "Should we revisit the MVP cut before architecture?",
         ]
 
     # ── Stage 3: architecture started, no test specs ───────────────────────

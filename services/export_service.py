@@ -5,14 +5,10 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models.db import (
-    Project, Task, TaskDependency, TaskStory, TaskTestSpec,
-    UserStory, Component, ArchitectureDecision, Constraint, TestSpec,
-)
-from services.knowledge import KnowledgeService
+from models.db import UserStory
+from services.export.queries import ExportDataLoader
 
 
 # ---------------------------------------------------------------------------
@@ -20,50 +16,13 @@ from services.knowledge import KnowledgeService
 # ---------------------------------------------------------------------------
 
 async def build_task_dag(project_id: str, db: AsyncSession) -> dict[str, Any]:
-    svc = KnowledgeService(db)
-    project = await svc._get_project(project_id)
-    tasks = await svc.get_all_tasks(project_id)
-
-    # Bulk-fetch all relationship rows for this project's tasks in 3 queries
-    task_ids = [t.id for t in tasks]
-
-    dep_rows: list[TaskDependency] = []
-    story_rows: list[TaskStory] = []
-    spec_rows: list[TaskTestSpec] = []
-
-    if task_ids:
-        dep_result = await db.execute(
-            select(TaskDependency).where(TaskDependency.task_id.in_(task_ids))
-        )
-        dep_rows = dep_result.scalars().all()
-
-        story_result = await db.execute(
-            select(TaskStory).where(TaskStory.task_id.in_(task_ids))
-        )
-        story_rows = story_result.scalars().all()
-
-        spec_result = await db.execute(
-            select(TaskTestSpec).where(TaskTestSpec.task_id.in_(task_ids))
-        )
-        spec_rows = spec_result.scalars().all()
-
-    # Index by task_id
-    deps_by_task: dict[str, list[str]] = defaultdict(list)
-    for row in dep_rows:
-        deps_by_task[row.task_id].append(row.depends_on_id)
-
-    stories_by_task: dict[str, list[str]] = defaultdict(list)
-    for row in story_rows:
-        stories_by_task[row.task_id].append(row.story_id)
-
-    specs_by_task: dict[str, list[str]] = defaultdict(list)
-    for row in spec_rows:
-        specs_by_task[row.task_id].append(row.spec_id)
+    loader = ExportDataLoader(db)
+    data = await loader.load_task_export(project_id)
 
     # Complexity summary
     by_complexity: dict[str, int] = {"trivial": 0, "small": 0, "medium": 0, "large": 0}
     task_list = []
-    for task in tasks:
+    for task in data.tasks:
         complexity = task.complexity or "medium"
         if complexity in by_complexity:
             by_complexity[complexity] += 1
@@ -78,13 +37,13 @@ async def build_task_dag(project_id: str, db: AsyncSession) -> dict[str, Any]:
             "status": "backlog",
             "acceptance_criteria": task.acceptance_criteria or [],
             "file_paths": task.file_paths or [],
-            "depends_on": deps_by_task.get(task.id, []),
-            "story_ids": stories_by_task.get(task.id, []),
-            "test_spec_ids": specs_by_task.get(task.id, []),
+            "depends_on": data.deps_by_task.get(task.id, []),
+            "story_ids": data.stories_by_task.get(task.id, []),
+            "test_spec_ids": data.specs_by_task.get(task.id, []),
         })
 
     return {
-        "project": project.name,
+        "project": data.project_name,
         "exported_at": datetime.now(timezone.utc).isoformat(),
         "tasks": task_list,
         "summary": {
@@ -108,30 +67,23 @@ def _placeholder_if_empty(lines: list[str]) -> str:
 
 
 async def build_arc42(project_id: str, db: AsyncSession) -> str:
-    svc = KnowledgeService(db)
-    project = await svc._get_project(project_id)
-
-    constraints = await svc.get_all_constraints(project_id)
-    components = await svc.get_all_components(project_id)
-    decisions = await svc.get_all_decisions(project_id)
-    stories = await svc.get_all_stories(project_id)
-    specs = await svc.get_all_test_specs(project_id)
-    tasks = await svc.get_all_tasks(project_id)
+    loader = ExportDataLoader(db)
+    data = await loader.load_arc42_export(project_id)
 
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     sections: list[str] = []
 
     # Header
-    sections.append(f"# arc42 Architecture Documentation\n# {project.name}")
+    sections.append(f"# arc42 Architecture Documentation\n# {data.project_name}")
     sections.append(f"*Generated: {now}*\n\n---")
 
     # 1. Introduction and Goals
-    purpose = project.description or _PLACEHOLDER
+    purpose = data.problem_statement or _PLACEHOLDER
     # Quality goals: derive from must-have stories
-    must_stories = [s for s in stories if (s.priority or "should") == "must"]
+    must_stories = [s for s in data.stories if (s.priority or "should") == "must"]
     qg_lines = [
         f"- {s.i_want} *(as a {s.as_a})*"
-        for s in (must_stories or stories[:3])
+        for s in (must_stories or data.stories[:3])
     ]
     quality_block = _placeholder_if_empty(qg_lines)
 
@@ -144,13 +96,13 @@ async def build_arc42(project_id: str, db: AsyncSession) -> str:
     sections.append("---")
 
     # 2. Constraints
-    constraint_lines = [f"- **{c.type}**: {c.description}" for c in constraints]
+    constraint_lines = [f"- **{c.type}**: {c.description}" for c in data.constraints]
     sections.append(f"## 2. Constraints\n\n{_placeholder_if_empty(constraint_lines)}")
     sections.append("---")
 
     # 3. System Context
     external = [
-        c for c in components
+        c for c in data.components
         if (c.component_type or "").lower() in _EXTERNAL_TYPES
     ]
     ext_block = (
@@ -165,13 +117,13 @@ async def build_arc42(project_id: str, db: AsyncSession) -> str:
     sections.append("---")
 
     # 4. Solution Strategy
-    strategy_lines = [f"- **{d.title}**: {d.decision}" for d in decisions]
+    strategy_lines = [f"- **{d.title}**: {d.decision}" for d in data.decisions]
     sections.append(f"## 4. Solution Strategy\n\n{_placeholder_if_empty(strategy_lines)}")
     sections.append("---")
 
     # 5. Building Blocks
     component_blocks: list[str] = []
-    for comp in components:
+    for comp in data.components:
         block_lines = [
             f"### {comp.name}",
             f"**Type:** {comp.component_type or '–'}",
@@ -190,7 +142,7 @@ async def build_arc42(project_id: str, db: AsyncSession) -> str:
 
     # 6. Runtime View — task list with spec counts
     task_lines: list[str] = []
-    for i, t in enumerate(tasks):
+    for i, t in enumerate(data.tasks):
         task_lines.append(f"{i + 1}. **{t.title}** *(complexity: {t.complexity or 'medium'})*")
         if t.acceptance_criteria:
             for ac in t.acceptance_criteria:
@@ -198,19 +150,19 @@ async def build_arc42(project_id: str, db: AsyncSession) -> str:
     task_block = "\n".join(task_lines) if task_lines else _PLACEHOLDER
 
     spec_by_type: dict[str, list] = {"unit": [], "integration": [], "e2e": []}
-    for sp in specs:
+    for sp in data.specs:
         spec_by_type.setdefault(sp.test_type or "unit", []).append(sp)
     spec_summary_lines = [
         f"- **Unit tests:** {len(spec_by_type['unit'])}",
         f"- **Integration tests:** {len(spec_by_type['integration'])}",
         f"- **End-to-end tests:** {len(spec_by_type['e2e'])}",
-        f"- **Total:** {len(specs)}",
+        f"- **Total:** {len(data.specs)}",
     ]
 
     sections.append(
         "## 6. Runtime View\n\n"
         "> *Sequence diagrams not yet generated.*\n\n"
-        f"### Implementation Tasks ({len(tasks)})\n{task_block}\n\n"
+        f"### Implementation Tasks ({len(data.tasks)})\n{task_block}\n\n"
         f"### Test Coverage Summary\n" + "\n".join(spec_summary_lines)
     )
     sections.append("---")
@@ -224,7 +176,7 @@ async def build_arc42(project_id: str, db: AsyncSession) -> str:
 
     # 8. Cross-cutting Concepts — test specifications catalogue
     spec_blocks: list[str] = []
-    for sp in specs:
+    for sp in data.specs:
         sb = [f"#### {sp.description}"]
         sb.append(f"**Type:** {sp.test_type or 'unit'}")
         if sp.given_context:
@@ -244,7 +196,7 @@ async def build_arc42(project_id: str, db: AsyncSession) -> str:
 
     # 9. Architecture Decisions
     adr_blocks: list[str] = []
-    for n, dec in enumerate(decisions, start=1):
+    for n, dec in enumerate(data.decisions, start=1):
         adr = [f"### ADR-{n}: {dec.title}", ""]
         adr.append(f"**Context:** {dec.context or '–'}")
         adr.append("")
@@ -270,7 +222,7 @@ async def build_arc42(project_id: str, db: AsyncSession) -> str:
     # 10. Quality Requirements — stories grouped by priority
     priority_order = ["must", "should", "could", "wont"]
     by_priority: dict[str, list[UserStory]] = defaultdict(list)
-    for story in stories:
+    for story in data.stories:
         by_priority[story.priority or "should"].append(story)
 
     story_sections: list[str] = []
@@ -286,10 +238,10 @@ async def build_arc42(project_id: str, db: AsyncSession) -> str:
 
     quality_req_body = "\n".join(story_sections) if story_sections else _PLACEHOLDER
     spec_count_line = (
-        f"\n### Test Coverage\n{len(specs)} test spec{'s' if len(specs) != 1 else ''} defined"
+        f"\n### Test Coverage\n{len(data.specs)} test spec{'s' if len(data.specs) != 1 else ''} defined"
         f" ({len(spec_by_type['unit'])} unit, {len(spec_by_type['integration'])} integration,"
         f" {len(spec_by_type['e2e'])} e2e)."
-        if specs else ""
+        if data.specs else ""
     )
     sections.append(
         f"## 10. Quality Requirements\n\n### Stories by Priority\n\n{quality_req_body}"

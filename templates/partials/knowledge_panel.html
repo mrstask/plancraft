@@ -39,6 +39,12 @@
         </span>
     </div>
     <div class="flex justify-between text-xs">
+        <span class="text-gray-500">🎯 MVP Stories</span>
+        <span class="font-medium {% if snapshot.mvp_story_count > 0 %}text-blue-600{% else %}text-gray-400{% endif %}">
+            {{ snapshot.mvp_story_count }}
+        </span>
+    </div>
+    <div class="flex justify-between text-xs">
         <span class="text-gray-500">🏗️ Components</span>
         <span class="font-medium {% if snapshot.component_count > 0 %}text-blue-600{% else %}text-gray-400{% endif %}">
             {{ snapshot.component_count }}
@@ -69,6 +75,13 @@
 <div class="p-3 border-b border-gray-100">
     <p class="text-xs uppercase text-gray-400 font-semibold mb-1">Problem</p>
     <p class="text-xs text-gray-600 leading-relaxed">{{ snapshot.problem_statement }}</p>
+</div>
+{% endif %}
+
+{% if snapshot.mvp_rationale %}
+<div class="p-3 border-b border-gray-100">
+    <p class="text-xs uppercase text-gray-400 font-semibold mb-1">MVP Rationale</p>
+    <p class="text-xs text-gray-600 leading-relaxed">{{ snapshot.mvp_rationale }}</p>
 </div>
 {% endif %}
 

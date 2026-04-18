@@ -27,14 +27,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import settings
 from services.knowledge import KnowledgeService
-from services.llm import _dispatch_tool, _get_phase_tools
+from services.llm import dispatch_tool, get_phase_tools
 
 log = logging.getLogger(__name__)
 
 _client = AsyncOpenAI(base_url=settings.ollama_base_url, api_key="ollama")
 
 # Tools available during review (same subset as the review phase)
-_REVIEW_TOOLS = _get_phase_tools("review")
+_REVIEW_TOOLS = get_phase_tools("review")
 
 # ---------------------------------------------------------------------------
 # Per-category context builders
@@ -233,7 +233,7 @@ async def _run_pass(
             log.warning(f"[review/{step_name}] Bad JSON for {name}")
             continue
 
-        result = await _dispatch_tool(project_id, name, args, knowledge_svc)
+        result = await dispatch_tool(project_id, name, args, knowledge_svc)
         log.info(f"[review/{step_name}] {name} → {result}")
         yield {"type": "tool_used", "name": name, "result": result}
 

@@ -19,6 +19,8 @@ class KnowledgeSnapshot(BaseModel):
     """Compact representation of the current project state injected into Claude's context."""
     project_name: str
     problem_statement: str | None = None
+    mvp_story_count: int = 0
+    mvp_rationale: str | None = None
     story_count: int = 0
     epic_count: int = 0
     component_count: int = 0
@@ -40,6 +42,13 @@ class KnowledgeSnapshot(BaseModel):
             f"{self.component_count} components, {self.decision_count} decisions, "
             f"{self.test_spec_count} test specs, {self.task_count} tasks"
         )
+        if self.mvp_story_count:
+            lines.append(
+                f"MVP scope selected: {self.mvp_story_count} stor"
+                f"{'y' if self.mvp_story_count == 1 else 'ies'}"
+            )
+            if self.mvp_rationale:
+                lines.append(f"MVP rationale: {self.mvp_rationale}")
         if self.recent_stories:
             lines.append("\nRecent stories:")
             for s in self.recent_stories:
@@ -161,6 +170,31 @@ class SetMvpScopeArgs(BaseModel):
     rationale: str = ""
 
 
+class DeleteStoryArgs(BaseModel):
+    story_id: str
+    reason: str = ""
+
+
+class DeleteComponentArgs(BaseModel):
+    component_id: str
+    reason: str = ""
+
+
+class DeleteDecisionArgs(BaseModel):
+    decision_id: str
+    reason: str = ""
+
+
+class DeleteTestSpecArgs(BaseModel):
+    spec_id: str
+    reason: str = ""
+
+
+class DeleteTaskArgs(BaseModel):
+    task_id: str
+    reason: str = ""
+
+
 # ---------------------------------------------------------------------------
 # Review phase — update / delete tools
 # ---------------------------------------------------------------------------
@@ -220,7 +254,7 @@ class PhaseInfo:
 def compute_phase_status(snapshot: "KnowledgeSnapshot") -> list[PhaseInfo]:
     """Derive which phases are unlocked / complete from the knowledge snapshot."""
     ba_done   = bool(snapshot.problem_statement) and snapshot.story_count > 0
-    pm_done   = snapshot.epic_count > 0
+    pm_done   = snapshot.epic_count > 0 and snapshot.mvp_story_count > 0
     arch_done = snapshot.component_count > 0 and snapshot.decision_count > 0
     tdd_done  = snapshot.test_spec_count > 0 and snapshot.task_count > 0
 

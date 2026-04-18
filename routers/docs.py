@@ -13,14 +13,14 @@ templates = Jinja2Templates(directory="templates")
 
 async def _tree_context(project_id: str, db: AsyncSession) -> dict:
     svc = KnowledgeService(db)
-    project   = await svc._get_project(project_id)
-    epics     = await svc.get_all_epics(project_id)
-    stories   = await svc.get_all_stories(project_id)
-    components= await svc.get_all_components(project_id)
+    project = await svc._get_project(project_id)
+    epics = await svc.get_all_epics(project_id)
+    stories = await svc.get_all_stories(project_id)
+    components = await svc.get_all_components(project_id)
     decisions = await svc.get_all_decisions(project_id)
     constraints = await svc.get_all_constraints(project_id)
-    test_specs= await svc.get_all_test_specs(project_id)
-    tasks     = await svc.get_all_tasks(project_id)
+    test_specs = await svc.get_all_test_specs(project_id)
+    tasks = await svc.get_all_tasks(project_id)
     return dict(
         project=project, epics=epics, stories=stories,
         components=components, decisions=decisions, constraints=constraints,
@@ -53,11 +53,16 @@ async def doc_detail(
     item = None
 
     match item_type:
-        case "story":     item = await svc.get_story(item_id)
-        case "component": item = await svc.get_component(item_id)
-        case "decision":  item = await svc.get_decision(item_id)
-        case "test-spec": item = await svc.get_test_spec(item_id)
-        case "task":      item = await svc.get_task(item_id)
+        case "story":
+            item = await svc.get_story(project_id, item_id)
+        case "component":
+            item = await svc.get_component(project_id, item_id)
+        case "decision":
+            item = await svc.get_decision(project_id, item_id)
+        case "test-spec":
+            item = await svc.get_test_spec(project_id, item_id)
+        case "task":
+            item = await svc.get_task(project_id, item_id)
 
     return templates.TemplateResponse(
         "partials/doc_detail.html",
