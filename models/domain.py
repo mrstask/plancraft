@@ -43,18 +43,18 @@ class KnowledgeSnapshot(BaseModel):
         if self.recent_stories:
             lines.append("\nRecent stories:")
             for s in self.recent_stories:
-                lines.append(f"  - [{s.id[:8]}] As a {s.as_a}, I want {s.i_want}")
+                lines.append(f"  - [{s.id}] As a {s.as_a}, I want {s.i_want}")
         if self.recent_components:
             lines.append("\nComponents defined:")
             for c in self.recent_components:
-                lines.append(f"  - [{c.id[:8]}] {c.name}: {c.responsibility}")
+                lines.append(f"  - [{c.id}] {c.name}: {c.responsibility}")
         if self.recent_decisions:
             lines.append(
                 f"\nARCHITECTURE DECISIONS ALREADY RECORDED ({len(self.recent_decisions)}) "
                 "— do NOT record a new decision if it is similar to any of these:"
             )
             for d in self.recent_decisions:
-                lines.append(f"  - [{d.id[:8]}] {d.title}: {d.decision}")
+                lines.append(f"  - [{d.id}] {d.title}: {d.decision}")
         return "\n".join(lines)
 
 

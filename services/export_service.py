@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.db import (
     Project, Task, TaskDependency, TaskStory, TaskTestSpec,
-    UserStory, Component, ArchitectureDecision, Constraint,
+    UserStory, Component, ArchitectureDecision, Constraint, TestSpec,
 )
 from services.knowledge import KnowledgeService
 
@@ -115,6 +115,7 @@ async def build_arc42(project_id: str, db: AsyncSession) -> str:
     components = await svc.get_all_components(project_id)
     decisions = await svc.get_all_decisions(project_id)
     stories = await svc.get_all_stories(project_id)
+    specs = await svc.get_all_test_specs(project_id)
     tasks = await svc.get_all_tasks(project_id)
 
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -126,12 +127,13 @@ async def build_arc42(project_id: str, db: AsyncSession) -> str:
 
     # 1. Introduction and Goals
     purpose = project.description or _PLACEHOLDER
-    # Quality goals: gather acceptance criteria themes from stories
-    ac_lines = []
-    for story in stories:
-        for ac in (story.acceptance_criteria or []):
-            ac_lines.append(f"- {ac.criterion}")
-    quality_block = _placeholder_if_empty(ac_lines)
+    # Quality goals: derive from must-have stories
+    must_stories = [s for s in stories if (s.priority or "should") == "must"]
+    qg_lines = [
+        f"- {s.i_want} *(as a {s.as_a})*"
+        for s in (must_stories or stories[:3])
+    ]
+    quality_block = _placeholder_if_empty(qg_lines)
 
     sections.append(
         "## 1. Introduction and Goals\n\n"
@@ -186,15 +188,30 @@ async def build_arc42(project_id: str, db: AsyncSession) -> str:
     sections.append(f"## 5. Building Blocks\n\n{building_block_body}")
     sections.append("---")
 
-    # 6. Runtime View
-    task_steps = (
-        "\n".join(f"{i + 1}. {t.title}" for i, t in enumerate(tasks))
-        if tasks else _PLACEHOLDER
-    )
+    # 6. Runtime View — task list with spec counts
+    task_lines: list[str] = []
+    for i, t in enumerate(tasks):
+        task_lines.append(f"{i + 1}. **{t.title}** *(complexity: {t.complexity or 'medium'})*")
+        if t.acceptance_criteria:
+            for ac in t.acceptance_criteria:
+                task_lines.append(f"   - {ac}")
+    task_block = "\n".join(task_lines) if task_lines else _PLACEHOLDER
+
+    spec_by_type: dict[str, list] = {"unit": [], "integration": [], "e2e": []}
+    for sp in specs:
+        spec_by_type.setdefault(sp.test_type or "unit", []).append(sp)
+    spec_summary_lines = [
+        f"- **Unit tests:** {len(spec_by_type['unit'])}",
+        f"- **Integration tests:** {len(spec_by_type['integration'])}",
+        f"- **End-to-end tests:** {len(spec_by_type['e2e'])}",
+        f"- **Total:** {len(specs)}",
+    ]
+
     sections.append(
         "## 6. Runtime View\n\n"
         "> *Sequence diagrams not yet generated.*\n\n"
-        f"### Task Lifecycle\n{task_steps}"
+        f"### Implementation Tasks ({len(tasks)})\n{task_block}\n\n"
+        f"### Test Coverage Summary\n" + "\n".join(spec_summary_lines)
     )
     sections.append("---")
 
@@ -205,8 +222,24 @@ async def build_arc42(project_id: str, db: AsyncSession) -> str:
     )
     sections.append("---")
 
-    # 8. Cross-cutting Concepts
-    sections.append(f"## 8. Cross-cutting Concepts\n\n{_PLACEHOLDER}")
+    # 8. Cross-cutting Concepts — test specifications catalogue
+    spec_blocks: list[str] = []
+    for sp in specs:
+        sb = [f"#### {sp.description}"]
+        sb.append(f"**Type:** {sp.test_type or 'unit'}")
+        if sp.given_context:
+            sb.append(f"**Given:** {sp.given_context}")
+        if sp.when_action:
+            sb.append(f"**When:** {sp.when_action}")
+        if sp.then_expectation:
+            sb.append(f"**Then:** {sp.then_expectation}")
+        spec_blocks.append("\n".join(sb))
+
+    spec_catalogue = (
+        "### Test Specifications\n\n" + "\n\n".join(spec_blocks)
+        if spec_blocks else _PLACEHOLDER
+    )
+    sections.append(f"## 8. Cross-cutting Concepts\n\n{spec_catalogue}")
     sections.append("---")
 
     # 9. Architecture Decisions
@@ -252,8 +285,15 @@ async def build_arc42(project_id: str, db: AsyncSession) -> str:
             )
 
     quality_req_body = "\n".join(story_sections) if story_sections else _PLACEHOLDER
+    spec_count_line = (
+        f"\n### Test Coverage\n{len(specs)} test spec{'s' if len(specs) != 1 else ''} defined"
+        f" ({len(spec_by_type['unit'])} unit, {len(spec_by_type['integration'])} integration,"
+        f" {len(spec_by_type['e2e'])} e2e)."
+        if specs else ""
+    )
     sections.append(
         f"## 10. Quality Requirements\n\n### Stories by Priority\n\n{quality_req_body}"
+        f"{spec_count_line}"
     )
     sections.append("---")
 

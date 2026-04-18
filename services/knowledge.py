@@ -296,14 +296,48 @@ class KnowledgeService:
 
         for dep_id in args.depends_on:
             self.db.add(TaskDependency(task_id=task.id, depends_on_id=dep_id))
-        for story_id in args.story_ids:
+
+        # Resolve story_ids — model may have passed full or 8-char truncated UUIDs.
+        # Normalise to actual story IDs so FK links are valid.
+        resolved_story_ids: list[str] = []
+        for sid in args.story_ids:
+            r = await self.db.execute(
+                select(UserStory).where(
+                    UserStory.project_id == project_id,
+                    UserStory.id.ilike(f"{sid}%"),
+                )
+            )
+            story = r.scalar_one_or_none()
+            if story:
+                resolved_story_ids.append(story.id)
+
+        for story_id in resolved_story_ids:
             self.db.add(TaskStory(task_id=task.id, story_id=story_id))
+
+        # Explicit spec links supplied by the model
+        linked_spec_ids: set[str] = set(args.test_spec_ids)
         for spec_id in args.test_spec_ids:
             self.db.add(TaskTestSpec(task_id=task.id, spec_id=spec_id))
 
+        # Auto-link: attach all test specs that share any of this task's story_ids.
+        # The model cannot know spec UUIDs (tool results arrive after the turn), so
+        # we wire story→spec→task automatically on the server side.
+        if resolved_story_ids:
+            auto_r = await self.db.execute(
+                select(TestSpec).where(
+                    TestSpec.project_id == project_id,
+                    TestSpec.story_id.in_(resolved_story_ids),
+                )
+            )
+            for spec in auto_r.scalars().all():
+                if spec.id not in linked_spec_ids:
+                    self.db.add(TaskTestSpec(task_id=task.id, spec_id=spec.id))
+                    linked_spec_ids.add(spec.id)
+
         await self.db.commit()
         await self.db.refresh(task)
-        return f"Task proposed: {task.id}"
+        linked = len(linked_spec_ids)
+        return f"Task proposed: {task.id} (linked {linked} test spec{'s' if linked != 1 else ''})"
 
     # ------------------------------------------------------------------
     # Full-list fetchers (for the document tree sidebar)
@@ -496,6 +530,47 @@ class KnowledgeService:
         await self.db.delete(obj)
         await self.db.commit()
         return f"Task deleted: {task_id}"
+
+    async def get_tdd_context(self, project_id: str) -> str:
+        """Full context for the TDD phase: stories + components with FULL UUIDs + existing specs."""
+        project = await self._get_project(project_id)
+        stories    = await self.get_all_stories(project_id)
+        components = await self.get_all_components(project_id)
+        specs      = await self.get_all_test_specs(project_id)
+        tasks      = await self.get_all_tasks(project_id)
+
+        lines = [
+            f"Project: {project.name}",
+            f"Problem: {project.description or '(none)'}",
+            "",
+        ]
+
+        lines.append(f"## USER STORIES ({len(stories)}) — use these FULL IDs in story_id / story_ids fields")
+        for s in stories:
+            lines.append(f"  [{s.id}]  As a {s.as_a}, I want {s.i_want}, so that {s.so_that}")
+            lines.append(f"    Priority: {s.priority}")
+            for ac in (s.acceptance_criteria or []):
+                lines.append(f"    AC: {ac.criterion}")
+
+        lines.append(f"\n## COMPONENTS ({len(components)}) — use these FULL IDs in component_id field")
+        for c in components:
+            lines.append(f"  [{c.id}]  {c.name} ({c.component_type or 'module'}): {c.responsibility}")
+
+        if specs:
+            lines.append(f"\n## TEST SPECS ALREADY SAVED ({len(specs)}) — do NOT duplicate these")
+            for sp in specs:
+                lines.append(f"  [{sp.id}]  {sp.description} [{sp.test_type}]")
+        else:
+            lines.append("\n## TEST SPECS — none saved yet; you must create all of them now")
+
+        if tasks:
+            lines.append(f"\n## TASKS ALREADY PROPOSED ({len(tasks)}) — do NOT duplicate these")
+            for t in tasks:
+                lines.append(f"  [{t.id}]  {t.title} [{t.complexity}]")
+        else:
+            lines.append("\n## TASKS — none proposed yet; you must propose all implementation tasks now")
+
+        return "\n".join(lines)
 
     async def get_full_review_context(self, project_id: str) -> str:
         """Return a formatted string of ALL artifacts with IDs for the reviewer LLM."""

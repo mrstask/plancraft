@@ -519,9 +519,13 @@ async def stream_response(
     knowledge_svc = KnowledgeService(db)
     snapshot = await knowledge_svc.get_snapshot(project_id)
 
-    # Review phase gets ALL artifacts as context so the LLM can reference IDs
+    # TDD and Review phases get full artifact context so the LLM can reference exact UUIDs.
+    # TDD needs story/component IDs to link specs and tasks correctly.
+    # Review needs all artifact IDs to call update_*/delete_* tools precisely.
     full_context = None
-    if role_tab == "review":
+    if role_tab == "tdd":
+        full_context = await knowledge_svc.get_tdd_context(project_id)
+    elif role_tab == "review":
         full_context = await knowledge_svc.get_full_review_context(project_id)
 
     system_prompt = build_system_prompt(snapshot, role_tab, full_context=full_context)
