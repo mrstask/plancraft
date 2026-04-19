@@ -16,7 +16,7 @@ from roles import (
 )
 from services.knowledge import KnowledgeService
 from .prompts import build_system_prompt
-from .registry import dispatch_tool, get_phase_tools, parse_tool_arguments
+from .registry import TOOL_ALIASES, dispatch_tool, get_phase_tools, parse_tool_arguments
 
 log = logging.getLogger(__name__)
 
@@ -30,11 +30,29 @@ EXTRACTION_SIGNALS = [
     "epic", "mvp",
 ]
 
+# Names the model sometimes writes as pseudo-function-calls in prose
+# instead of firing the real tool_calls API. When we see these, we force
+# an extraction pass even if the conversational signals are sparse.
+PSEUDO_CALL_NAMES = (
+    "add_epic", "add_user_story", "update_user_story",
+    "add_component", "add_test_spec", "propose_task",
+    "record_decision", "record_constraint",
+    "set_problem_statement", "set_mvp_scope",
+)
+
+
+def _has_pseudo_tool_call(text: str) -> bool:
+    """Detect `tool_name(` or `tool_name{` patterns the model writes in prose."""
+    lowered = text.lower()
+    return any(f"{name}(" in lowered or f"{name}{{" in lowered for name in PSEUDO_CALL_NAMES)
+
 
 def should_extract(text: str, role_tab: str = "ba") -> bool:
     t = text.lower()
     if role_tab == "tdd":
         return len(t.strip()) > 50
+    if _has_pseudo_tool_call(t):
+        return True
     return sum(1 for kw in EXTRACTION_SIGNALS if kw in t) >= 2
 
 
@@ -74,13 +92,17 @@ async def extraction_pass(
         ]
     )
 
-    extraction_model = settings.tdd_model if role_tab in ("tdd", "review") else settings.ollama_model
+    # Always use the tool-calling-optimized model for extraction. The lighter
+    # ollama_model tends to emit pseudo-call syntax in prose instead of firing
+    # the real tool_calls API, which is exactly the failure mode this pass exists to recover from.
+    extraction_model = settings.tdd_model
     try:
         resp = await client.chat.completions.create(
             model=extraction_model,
             max_tokens=1024,
             messages=extraction_messages,
             tools=get_phase_tools(role_tab),
+            tool_choice="required",
             stream=False,
         )
     except Exception as exc:
@@ -99,7 +121,70 @@ async def extraction_pass(
     for tc in message.tool_calls:
         args = parse_tool_arguments(tc.function.arguments or "{}")
         result = await dispatch_tool(project_id, tc.function.name, args, knowledge_svc)
-        yield {"type": "tool_used", "name": tc.function.name, "result": result}
+        resolved_name = TOOL_ALIASES.get(tc.function.name, tc.function.name)
+        yield {"type": "tool_used", "name": resolved_name, "result": result}
+
+
+async def _propose_tasks_pass(
+    project_id: str,
+    original_messages: list[dict],
+    knowledge_svc: KnowledgeService,
+) -> AsyncIterator[dict]:
+    """Second pass for TDD phase: force propose_task calls once specs are saved.
+
+    The TDD model often exhausts its response budget on add_test_spec calls and
+    never gets to propose_task. This follow-up pass loads fresh TDD context
+    (now including the just-saved specs) and restricts the tool set to
+    propose_task with tool_choice="required".
+    """
+    try:
+        tdd_context = await knowledge_svc.get_tdd_context(project_id)
+    except Exception as exc:
+        log.warning("Tasks pass: could not build TDD context: %s", exc)
+        tdd_context = ""
+
+    system_msg = (
+        "You are a TDD tester proposing atomic implementation tasks. "
+        "Call propose_task() for EVERY distinct unit of work needed to build the MVP. "
+        "Cover: each component's implementation, each test spec's scaffolding, "
+        "integration wiring, and any infrastructure setup. "
+        "One propose_task call per task. No prose. No other tools.\n\n"
+        f"## Current Project State\n{tdd_context}"
+    )
+    user_msg = (
+        "Propose every implementation task for the MVP right now. "
+        "Call propose_task() for each one. Do not write any text."
+    )
+
+    tools = [t for t in get_phase_tools("tdd") if t["function"]["name"] == "propose_task"]
+
+    try:
+        resp = await client.chat.completions.create(
+            model=settings.tdd_model,
+            max_tokens=settings.max_tokens,
+            messages=(
+                [{"role": "system", "content": system_msg}]
+                + original_messages
+                + [{"role": "user", "content": user_msg}]
+            ),
+            tools=tools,
+            tool_choice="required",
+            stream=False,
+        )
+    except Exception as exc:
+        log.warning("Tasks pass failed: %s", exc)
+        return
+
+    message = resp.choices[0].message if resp.choices else None
+    if not message or not message.tool_calls:
+        log.warning("Tasks pass produced no tool calls")
+        return
+
+    for tc in message.tool_calls:
+        args = parse_tool_arguments(tc.function.arguments or "{}")
+        result = await dispatch_tool(project_id, tc.function.name, args, knowledge_svc)
+        resolved_name = TOOL_ALIASES.get(tc.function.name, tc.function.name)
+        yield {"type": "tool_used", "name": resolved_name, "result": result}
 
 
 def detect_persona(text: str) -> str:
@@ -233,8 +318,9 @@ async def stream_response(
             continue
         args = parse_tool_arguments(tc["args_str"])
         result = await dispatch_tool(project_id, tc["name"], args, knowledge_svc)
-        tool_calls_made.append({"name": tc["name"], "result": result})
-        yield {"type": "tool_used", "name": tc["name"], "result": result}
+        resolved_name = TOOL_ALIASES.get(tc["name"], tc["name"])
+        tool_calls_made.append({"name": resolved_name, "result": result})
+        yield {"type": "tool_used", "name": resolved_name, "result": result}
 
     full_text = "".join(full_text_parts)
     if not tool_calls_made and should_extract(full_text, role_tab=role_tab):
@@ -242,6 +328,18 @@ async def stream_response(
             yield item
             if item["type"] == "tool_used":
                 tool_calls_made.append({"name": item["name"], "result": item["result"]})
+
+    # TDD phase follow-up: the model often saves test specs but stops before
+    # proposing tasks. If that happened, force a second pass restricted to
+    # propose_task so the task list actually gets populated.
+    if role_tab == "tdd":
+        saved_specs = [t for t in tool_calls_made if t["name"] == "add_test_spec"]
+        saved_tasks = [t for t in tool_calls_made if t["name"] == "propose_task"]
+        if saved_specs and not saved_tasks:
+            async for item in _propose_tasks_pass(project_id, messages, knowledge_svc):
+                yield item
+                if item["type"] == "tool_used":
+                    tool_calls_made.append({"name": item["name"], "result": item["result"]})
 
     # Safety net: if the model called tools but produced no visible text, run a
     # text-only continuation so the user always receives a reply. Only applies to

@@ -90,6 +90,21 @@ class DecisionSnapshot(BaseModel):
 # Tool call argument models (validated when Claude calls a knowledge tool)
 # ---------------------------------------------------------------------------
 
+def _coerce_criteria(v: object) -> object:
+    """Allow a bare string where a list[str] is expected.
+
+    The LLM sometimes passes a single acceptance criterion as a plain string
+    or a newline-delimited blob instead of a JSON array. Normalize both to
+    list[str] so Pydantic validation succeeds.
+    """
+    if v is None or isinstance(v, list):
+        return v
+    if isinstance(v, str):
+        parts = [line.strip(" -•*\t") for line in v.splitlines() if line.strip()]
+        return parts if len(parts) > 1 else [v.strip()]
+    return v
+
+
 class AddUserStoryArgs(BaseModel):
     as_a: str = Field(description="The role/persona (e.g. 'logged-in user')")
     i_want: str = Field(description="The action or feature desired")
@@ -97,6 +112,11 @@ class AddUserStoryArgs(BaseModel):
     acceptance_criteria: list[str] = Field(default_factory=list)
     priority: Literal["must", "should", "could", "wont"] = "should"
     epic_id: str | None = Field(None, description="ID of an existing epic to attach to")
+
+    @field_validator("acceptance_criteria", mode="before")
+    @classmethod
+    def _ac_coerce(cls, v: object) -> object:
+        return _coerce_criteria(v) or []
 
 
 class UpdateUserStoryArgs(BaseModel):
@@ -106,6 +126,11 @@ class UpdateUserStoryArgs(BaseModel):
     so_that: str | None = None
     acceptance_criteria: list[str] | None = None
     priority: Literal["must", "should", "could", "wont"] | None = None
+
+    @field_validator("acceptance_criteria", mode="before")
+    @classmethod
+    def _ac_coerce(cls, v: object) -> object:
+        return _coerce_criteria(v)
 
 
 class AddEpicArgs(BaseModel):

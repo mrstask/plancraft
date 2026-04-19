@@ -3,6 +3,44 @@ import { renderHistoryMarkdown, renderMarkdownInto } from './markdown.js';
 import { QUICK_ACTIONS } from './quick-actions.js';
 import { addReviewChange, createReviewProgressCard, updateReviewStep } from './review-ui.js';
 
+// Names of tools the model sometimes writes as pseudo-function-calls in prose.
+// When the tokenizer leaks these, they look like `add_epic{...}` or `add_epic(...)`.
+const PSEUDO_TOOL_NAMES = [
+    'set_problem_statement', 'set_mvp_scope',
+    'add_epic', 'add_user_story', 'update_user_story',
+    'record_constraint', 'add_component', 'update_component',
+    'record_decision', 'update_decision',
+    'add_test_spec', 'update_test_spec',
+    'propose_task', 'update_task',
+    'delete_story', 'delete_component', 'delete_decision', 'delete_test_spec', 'delete_task',
+];
+
+// Strip tokenizer artifacts + pseudo-function-call blocks from visible text.
+// The server-side extraction pass will re-execute these as real tool calls and
+// emit a `tool_used` badge, so showing the raw syntax to the user is just noise.
+function sanitizeAssistantText(raw) {
+    if (!raw) return raw;
+    let s = raw;
+    // Qwen/Gemma tokenizer leaks (`<|"|>`, `<|arg_sep|>`, etc.) — strip wrappers only.
+    s = s.replace(/<\|[^|>]{0,40}\|>/g, '');
+    // Fenced code blocks whose content is a pseudo-tool-call — drop the whole block.
+    const namesAlt = PSEUDO_TOOL_NAMES.join('|');
+    const fenceRe = new RegExp(
+        '```[a-zA-Z0-9_-]*\\s*(?:' + namesAlt + ')\\s*[\\{(][\\s\\S]*?```',
+        'g',
+    );
+    s = s.replace(fenceRe, '');
+    // Inline pseudo-calls on their own line — drop the line.
+    const inlineRe = new RegExp(
+        '^\\s*(?:' + namesAlt + ')\\s*[\\{(][^\\n]*$',
+        'gm',
+    );
+    s = s.replace(inlineRe, '');
+    // Collapse 3+ blank lines left behind.
+    s = s.replace(/\n{3,}/g, '\n\n');
+    return s;
+}
+
 const bootstrap = window.PLANNING_SESSION_BOOTSTRAP;
 const projectId = bootstrap.projectId;
 
@@ -81,7 +119,7 @@ function registerPlanningSession() {
 
                 const bubble = document.getElementById('streaming-bubble');
                 if (bubble && bubble.dataset.raw) {
-                    renderMarkdownInto(bubble, bubble.dataset.raw);
+                    renderMarkdownInto(bubble, sanitizeAssistantText(bubble.dataset.raw));
                     bubble.classList.add('prose-content');
                     delete bubble.dataset.raw;
                 }
@@ -242,7 +280,7 @@ function registerPlanningSession() {
                 document.getElementById('typing-indicator').classList.add('hidden');
             }
             bubble.dataset.raw += text;
-            bubble.textContent = bubble.dataset.raw;
+            bubble.textContent = sanitizeAssistantText(bubble.dataset.raw);
             scrollToBottom();
         },
 
@@ -260,13 +298,23 @@ function registerPlanningSession() {
                 set_mvp_scope: '🎯',
             };
             const icon = TOOL_ICONS[toolName] || '💾';
+            console.debug('[tool_used]', toolName, result);
+            const pane = getActiveTabPane();
+            if (!pane) {
+                console.warn('[tool_used] no active tab pane — badge dropped', toolName);
+                return;
+            }
             const badge = document.createElement('div');
-            badge.className = 'flex items-center pl-10 py-0.5';
+            badge.className = 'tool-badge flex items-center gap-2 pl-10 py-1';
             const pill = document.createElement('span');
-            pill.className = 'text-xs text-green-700 bg-green-50 border border-green-100 rounded-full px-2.5 py-0.5';
-            pill.textContent = `${icon} ${result}`;
+            pill.className = [
+                'text-xs font-medium text-emerald-800 bg-emerald-50',
+                'border border-emerald-300 rounded-full px-3 py-1',
+                'shadow-sm animate-[pulse_1s_ease-out_1]',
+            ].join(' ');
+            pill.textContent = `${icon} ${toolName.replace(/_/g, ' ')} — ${result}`;
             badge.appendChild(pill);
-            getActiveTabPane().appendChild(badge);
+            pane.appendChild(badge);
             scrollToBottom();
         },
 

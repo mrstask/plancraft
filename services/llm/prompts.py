@@ -73,6 +73,9 @@ You have tools to persist structured knowledge. Follow these rules every turn:
 {tool_rules}
 Call tools in the same turn you discuss the item.
 Do not describe a persistable artifact in text without calling the matching tool.
+NEVER write tool-call syntax as text (e.g. `add_epic{{title: ...}}` or `add_epic(...)`).
+Tool calls MUST use the structured tool_calls API — if you type the function name in your
+prose, it does NOT execute and the artifact will NOT be saved.
 You may briefly confirm after calling: "Saved." or "Noted."
 
 ## Behaviour

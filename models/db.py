@@ -182,8 +182,8 @@ class TestSpec(Base):
 
     id = Column(String, primary_key=True, default=_uuid)
     project_id = Column(String, ForeignKey("projects.id"), nullable=False)
-    story_id = Column(String, ForeignKey("user_stories.id"), nullable=True)
-    component_id = Column(String, ForeignKey("components.id"), nullable=True)
+    story_id = Column(String, ForeignKey("user_stories.id", ondelete="SET NULL"), nullable=True)
+    component_id = Column(String, ForeignKey("components.id", ondelete="SET NULL"), nullable=True)
     description = Column(Text, nullable=False)
     test_type = Column(String, default="unit")    # unit|integration|e2e
     given_context = Column(Text, nullable=True)

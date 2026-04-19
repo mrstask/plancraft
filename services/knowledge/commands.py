@@ -321,6 +321,11 @@ class ArtifactCommands(KnowledgeBase):
         obj = r.scalar_one_or_none()
         if not obj:
             return f"Story {args.story_id} not found."
+        specs = await self.db.execute(
+            select(TestSpec).where(TestSpec.story_id == args.story_id)
+        )
+        for spec in specs.scalars().all():
+            spec.story_id = None
         await self.db.delete(obj)
         await self.db.commit()
         return f"Story deleted: {args.story_id}"
@@ -348,6 +353,13 @@ class ArtifactCommands(KnowledgeBase):
         obj = r.scalar_one_or_none()
         if not obj:
             return f"Component {args.component_id} not found."
+        # Clear FK references from test_specs (SQLite schema lacks ON DELETE SET NULL
+        # on the legacy column; do it explicitly).
+        specs = await self.db.execute(
+            select(TestSpec).where(TestSpec.component_id == args.component_id)
+        )
+        for spec in specs.scalars().all():
+            spec.component_id = None
         await self.db.delete(obj)
         await self.db.commit()
         return f"Component deleted: {args.component_id}"

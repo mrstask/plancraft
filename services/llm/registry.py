@@ -198,6 +198,26 @@ ALL_TOOLS: tuple[ToolDefinition, ...] = (
 
 TOOLS_BY_NAME = {tool.name: tool for tool in ALL_TOOLS}
 
+# Aliases for tool names the LLM commonly hallucinates. Maps the hallucinated
+# name to the canonical one so the call still executes.
+TOOL_ALIASES: dict[str, str] = {
+    "add_task": "propose_task",
+    "create_task": "propose_task",
+    "add_decision": "record_decision",
+    "create_decision": "record_decision",
+    "add_constraint": "record_constraint",
+    "create_constraint": "record_constraint",
+    "create_component": "add_component",
+    "create_epic": "add_epic",
+    "add_story": "add_user_story",
+    "create_story": "add_user_story",
+    "create_user_story": "add_user_story",
+    "add_test": "add_test_spec",
+    "create_test_spec": "add_test_spec",
+    "set_problem": "set_problem_statement",
+    "set_mvp": "set_mvp_scope",
+}
+
 
 def get_phase_tools(phase: str) -> list[dict]:
     return [tool.schema() for tool in ALL_TOOLS if phase in tool.phases]
@@ -208,9 +228,13 @@ def get_phase_tool_names(phase: str) -> set[str]:
 
 
 async def dispatch_tool(project_id: str, tool_name: str, tool_input: dict, svc) -> str:
-    tool = TOOLS_BY_NAME.get(tool_name)
+    resolved = TOOL_ALIASES.get(tool_name, tool_name)
+    tool = TOOLS_BY_NAME.get(resolved)
     if not tool:
+        log.warning("Unknown tool call: %s (no alias match)", tool_name)
         return f"Unknown tool: {tool_name}"
+    if resolved != tool_name:
+        log.info("Resolved tool alias %s -> %s", tool_name, resolved)
     try:
         return await tool.invoke(project_id, tool_input, svc)
     except Exception as exc:
