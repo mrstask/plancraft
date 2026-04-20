@@ -11,6 +11,7 @@ from database import get_db
 from models.db import Project, Message
 from models.domain import compute_phase_status, current_tab_from_phases
 from services.knowledge import KnowledgeService
+from services.workspace import ProjectWorkspace
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -30,6 +31,11 @@ async def create_project(
 ):
     project = Project(name=name)
     db.add(project)
+    await db.flush()  # assigns project.id before commit so we can use it for the path
+
+    ws = ProjectWorkspace.create(project.name, project.id)
+    project.root_path = str(ws.root)
+
     await db.commit()
     await db.refresh(project)
     return RedirectResponse(url=f"/projects/{project.id}", status_code=303)

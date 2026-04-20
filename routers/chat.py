@@ -15,6 +15,7 @@ from services.llm import stream_response
 from services.knowledge import KnowledgeService
 from services.suggestions import get_suggestions
 from services.review_orchestrator import run_full_review
+from services.workspace.renderer import schedule_render
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -86,6 +87,9 @@ async def send_message(
                 suggestions = get_suggestions(active_persona, snapshot)
                 phases = [p.to_dict() for p in compute_phase_status(snapshot)]
 
+                # Render workspace files in background (idempotent, non-blocking)
+                schedule_render(project_id, stream_db)
+
                 yield _sse("done", {
                     "persona": active_persona,
                     "suggestions": suggestions,
@@ -124,6 +128,7 @@ async def full_review(project_id: str):
                 svc = KnowledgeService(stream_db)
                 snapshot = await svc.get_snapshot(project_id)
                 phases = [p.to_dict() for p in compute_phase_status(snapshot)]
+                schedule_render(project_id, stream_db)
                 yield _sse("done", {"persona": "review", "suggestions": [], "phases": phases})
 
             except Exception as e:

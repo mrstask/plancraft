@@ -21,7 +21,7 @@ You describe your idea. Plancraft's AI roles extract everything needed to build 
         ↓
 🔎 Reviewer          →  deduplication, polish, cross-category consistency
         ↓
-📦 Export            →  task DAG JSON  +  arc42 Markdown
+📦 Export            →  workspace zip  +  task DAG JSON  +  arc42 Markdown
 ```
 
 The exported task DAG is directly consumable by autonomous agent systems (e.g. [dev_team](https://github.com/mrstask/dev_team)) to kick off implementation without any manual handoff.
@@ -40,8 +40,11 @@ The exported task DAG is directly consumable by autonomous agent systems (e.g. [
 - **Safer markdown rendering** — assistant/user markdown is rendered with `marked` and sanitized with DOMPurify before entering the DOM; if DOMPurify fails to load the renderer returns empty string rather than injecting raw HTML
 - **Modular session UI** — the main planning screen now loads its controller from `static/js/session/` instead of embedding all interaction logic inside the template
 - **Focused regression coverage** — unit tests cover phase gating, tool registration, MVP persistence, scoped artifact lookups, and story acceptance-criteria updates
-- **arc42 export** — full 12-section architecture documentation generated from the knowledge base
+- **Docs-as-code workspace** — each project gets its own directory (under `PROJECTS_ROOT`) with arc42 sections, individual ADR files, user-story files, test-spec files, task files, a Structurizr DSL C4 model, and a linked README; all files are regenerated from the DB after every LLM turn
+- **Per-role context files** — `.plancraft/role-context/{role}.md` files are kept in sync so each LLM turn loads only the artifacts relevant to that role, staying within local-model context budgets
+- **arc42 export** — full 12-section architecture documentation (split across files in-workspace, also downloadable as a single Markdown)
 - **Task DAG export** — JSON with all tasks, dependencies, story links, and test spec links; ready for automated implementation pipelines
+- **Workspace zip export** — download the complete docs-as-code directory as a zip; files are re-rendered fresh before packaging
 
 ---
 
@@ -101,6 +104,10 @@ python main.py
 OLLAMA_BASE_URL=http://localhost:11434/v1
 OLLAMA_MODEL=gemma4:latest
 TDD_MODEL=gemma4:31b
+
+# Root directory where per-project workspace folders are created
+# Can be absolute or relative to the working directory
+PROJECTS_ROOT=./projects
 ```
 
 ---
@@ -109,9 +116,9 @@ TDD_MODEL=gemma4:31b
 
 ```
 plancraft/
-├── main.py                  # FastAPI entry point + lifespan
-├── config.py                # Settings (Pydantic BaseSettings)
-├── database.py              # SQLAlchemy engine + versioned startup migrations
+├── main.py                  # FastAPI entry point + lifespan (creates PROJECTS_ROOT on startup)
+├── config.py                # Settings (Pydantic BaseSettings, includes PROJECTS_ROOT)
+├── database.py              # SQLAlchemy engine + versioned startup migrations + workspace backfill
 │
 ├── models/
 │   ├── db.py                # ORM models (Project, UserStory, Component, MVP scope, …)
@@ -129,7 +136,7 @@ plancraft/
 │   │   ├── commands.py      # Artifact creation, updates, deletes, MVP persistence
 │   │   ├── queries.py       # Scoped artifact reads for UI and exports
 │   │   ├── snapshots.py     # Knowledge snapshot builder for UI/LLM context
-│   │   ├── contexts.py      # Phase-specific prompt context builders
+│   │   ├── contexts.py      # Phase-specific prompt context builders (file-first, DB fallback)
 │   │   └── service.py       # Thin facade used by routers/orchestrators
 │   ├── llm/                 # LLM orchestration package
 │   │   ├── registry.py      # Shared tool registry + dispatcher
@@ -137,15 +144,27 @@ plancraft/
 │   │   └── streaming.py     # Ollama streaming + extraction pass
 │   ├── export/
 │   │   └── queries.py       # Export-specific read models
+│   ├── workspace/           # Docs-as-code workspace package
+│   │   ├── workspace.py     # ProjectWorkspace — path helpers + directory scaffold
+│   │   ├── renderer.py      # Orchestrator: render_workspace() + schedule_render()
+│   │   ├── role_context.py  # Per-role context file renderers with token budgets
+│   │   └── renderers/
+│   │       ├── arc42.py     # 12 individual arc42 section renderers
+│   │       ├── adr.py       # One NNNN-slug.md per architecture decision
+│   │       ├── stories.py   # One US-NNN.md per user story
+│   │       ├── specs.py     # One SPEC-NNN.md per test spec
+│   │       ├── tasks.py     # TASK-NNN.md files + tasks.json DAG
+│   │       ├── c4.py        # Structurizr DSL workspace.dsl
+│   │       └── readme.py    # Root README.md with full ToC and cross-links
 │   ├── review_orchestrator.py  # Multi-pass review pipeline
-│   ├── export_service.py    # Task DAG + arc42 builders
+│   ├── export_service.py    # Task DAG + single-file arc42 builders (legacy)
 │   └── suggestions.py       # Contextual follow-up suggestions
 │
 ├── routers/
-│   ├── projects.py          # Project CRUD + session view
-│   ├── chat.py              # SSE chat + full review endpoint
+│   ├── projects.py          # Project CRUD + session view (workspace created on POST /projects)
+│   ├── chat.py              # SSE chat + full review endpoint (triggers schedule_render per turn)
 │   ├── docs.py              # Document tree sidebar
-│   └── export.py            # Download endpoints
+│   └── export.py            # Download endpoints (workspace zip, task JSON, arc42 md)
 │
 ├── static/
 │   ├── css/
@@ -161,21 +180,51 @@ plancraft/
 tests/
 ├── test_phase_status.py      # Phase gating rules
 ├── test_tool_registry.py     # Tool availability by phase
-└── test_knowledge_service.py # MVP persistence + scoped reads + AC updates
+├── test_knowledge_service.py # MVP persistence + scoped reads + AC updates
+└── test_workspace.py         # Workspace scaffold, renderers, and path helpers
 ```
 
 ---
 
-## Updated architecture
+## Architecture
 
-The refactor split the old "god services" into smaller packages with clearer ownership:
+Ownership is split across packages with clear boundaries:
 
 - `services/knowledge/` owns the planning knowledge model itself.
 - `services/llm/` owns prompt construction, streaming, tool registration, and fallback extraction.
+- `services/workspace/` owns everything related to the per-project filesystem workspace — path resolution, directory scaffolding, all file renderers, and the background render orchestrator.
 - `services/export/queries.py` owns read models tailored for export instead of reusing generic app queries.
 - `static/js/session/` owns browser-side chat/review orchestration and keeps `templates/session.html` mostly declarative.
 
-That separation matters because the same LLM tools now drive prompts, schema validation, phase access, and dispatch from one source of truth. It also keeps prompt-context formatting, CRUD rules, and export loading from bleeding into each other.
+### Docs-as-code workspace
+
+When a project is created, Plancraft scaffolds a directory under `PROJECTS_ROOT`:
+
+```
+{PROJECTS_ROOT}/{slug}-{short-id}/
+├── README.md                      # index with links to all sections
+├── docs/
+│   ├── arc42/                     # 12 arc42 section files (interlinked)
+│   ├── adr/                       # one NNNN-slug.md per architecture decision
+│   ├── stories/                   # one US-NNN.md per user story
+│   ├── c4/workspace.dsl           # Structurizr DSL (C4 context + container views)
+│   └── diagrams/                  # generated diagram output (when Structurizr CLI present)
+├── tests/specs/                   # one SPEC-NNN.md per test spec (Given/When/Then)
+├── tasks/
+│   ├── tasks.json                 # full task DAG for agent consumption
+│   └── TASK-NNN.md                # one file per implementation task
+└── .plancraft/
+    └── role-context/              # pre-rendered per-role prompt context files
+        ├── ba.md / pm.md / architect.md / tdd.md / review.md
+```
+
+**DB is the source of truth.** The filesystem is a materialized view re-rendered after each LLM turn as a background task (`schedule_render`). All writes are idempotent — re-rendering is always safe.
+
+**Role context files** replace per-turn DB queries for the LLM system prompt. Each file is scoped to exactly what that role needs, keeping local-model context within budget. `PromptContextBuilder` reads the file if present and falls back to a DB query on the first turn (before the first render has run).
+
+### C4 / Structurizr
+
+The C4 renderer emits a `workspace.dsl` consumable by the [Structurizr CLI](https://github.com/structurizr/cli) to produce SVG/PNG diagrams. If the CLI is absent the DSL is still valid docs-as-code. The arc42 context and building-block sections link to the DSL file.
 
 ---
 
@@ -193,8 +242,9 @@ That separation matters because the same LLM tools now drive prompts, schema val
 
 | Format | Endpoint | Description |
 |--------|----------|-------------|
+| Workspace zip | `GET /projects/{id}/export/workspace` | Zip of the full docs-as-code directory (re-rendered fresh) |
 | Task DAG | `GET /projects/{id}/export/tasks` | JSON — tasks with dependencies, story & spec links |
-| arc42 docs | `GET /projects/{id}/export/arc42` | Markdown — full 12-section architecture doc |
+| arc42 docs | `GET /projects/{id}/export/arc42` | Single Markdown — full 12-section architecture doc (legacy) |
 
 ---
 
@@ -220,6 +270,9 @@ Each pass is atomic — the model stays focused, avoids context dilution, and th
 - SQLite foreign-key enforcement is enabled on every connection (`PRAGMA foreign_keys=ON`) and junction tables use `ON DELETE CASCADE`, so deleting a story or test spec automatically cleans up orphaned task-link rows.
 - Chat history sent to the model is capped at `MAX_HISTORY_MESSAGES` (default 50) to prevent context-window overflow as sessions grow.
 - The PM and TDD contexts include full artifact IDs when the model needs to make linking or scope-setting tool calls.
+- Role context files (`.plancraft/role-context/`) are written by `schedule_render()` after each turn and read back on the next turn by `PromptContextBuilder`, making per-role context deterministic and diffable.
+- Workspace rendering is fire-and-forget (`asyncio.ensure_future`) — a render failure never breaks the chat response.
+- On first startup, `_backfill_workspaces()` creates workspace directories for any existing projects that predate this feature.
 
 ---
 

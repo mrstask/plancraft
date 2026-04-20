@@ -1,5 +1,6 @@
 import logging
 import warnings
+from pathlib import Path
 
 from pydantic_settings import BaseSettings
 
@@ -23,11 +24,15 @@ class Settings(BaseSettings):
     max_history_messages: int = 50
     max_tokens: int = 4096
 
+    # Root directory where per-project workspace folders are created
+    projects_root: Path = Path("./projects")
+
     class Config:
         env_file = ".env"
 
 
 settings = Settings()
+settings.projects_root = settings.projects_root.resolve()
 
 if not settings.debug and settings.secret_key == _DEFAULT_SECRET_KEY:
     warnings.warn(

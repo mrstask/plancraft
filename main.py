@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from config import settings
 from database import init_db, migrate_db
 from routers import projects, chat, export, docs
 
@@ -15,9 +16,13 @@ logging.basicConfig(
 # SQLAlchemy is very chatty — only show warnings and above
 logging.getLogger("sqlalchemy").setLevel(logging.WARNING)
 
+_log = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    settings.projects_root.mkdir(parents=True, exist_ok=True)
+    _log.info("Projects root: %s", settings.projects_root)
     await init_db()
     await migrate_db()
     yield

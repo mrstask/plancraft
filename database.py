@@ -32,6 +32,32 @@ async def init_db():
         await conn.run_sync(Base.metadata.create_all)
 
 
+async def _backfill_workspaces() -> None:
+    """Create workspace directories for existing projects that don't have one."""
+    from sqlalchemy import select as _select
+    from models.db import Project as _Project
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            _select(_Project).where(_Project.root_path.is_(None))
+        )
+        projects = result.scalars().all()
+        if not projects:
+            return
+
+        from services.workspace.workspace import ProjectWorkspace
+        for project in projects:
+            ws = ProjectWorkspace.create(project.name, project.id)
+            project.root_path = str(ws.root)
+
+        await db.commit()
+
+        import logging
+        logging.getLogger(__name__).info(
+            "Backfilled workspace paths for %d existing project(s)", len(projects)
+        )
+
+
 async def migrate_db():
     """Run versioned schema migrations after the base metadata exists."""
     migrations: list[tuple[str, list[str]]] = [
@@ -76,3 +102,6 @@ async def migrate_db():
                 text("INSERT INTO schema_migrations(version) VALUES (:version)"),
                 {"version": version},
             )
+
+    # Backfill workspace directories for existing projects
+    await _backfill_workspaces()

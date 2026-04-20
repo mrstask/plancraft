@@ -1,8 +1,40 @@
-"""Prompt-context builders for LLM phases."""
+"""Prompt-context builders for LLM phases.
+
+Each method first tries to read the pre-rendered role-context file from the workspace.
+If the file doesn't exist yet (e.g., first turn for a new project) it falls back to
+rebuilding the context from DB — same as the original behaviour.
+"""
 from __future__ import annotations
+import logging
 
 from .common import KnowledgeBase
 from .queries import ArtifactQueries
+
+log = logging.getLogger(__name__)
+
+
+def _read_role_file(project_id: str, role: str, db) -> str | None:
+    """Try to read a pre-rendered role context file. Returns None on any failure."""
+    try:
+        from services.knowledge.common import KnowledgeBase as _KB  # avoid circular at module level
+        # We need the project's root_path. Use a cached lookup via the common base.
+        # Because this is sync we read from the DB session cache if available.
+        from sqlalchemy import select as _select
+        from models.db import Project as _Project  # noqa: PLC0415
+        # Access the sync session state — SQLAlchemy's identity map holds the project
+        # if it was loaded in this session; if not, return None and let DB fallback run.
+        for obj in db.identity_map.values():  # type: ignore[attr-defined]
+            if isinstance(obj, _Project) and obj.id == project_id and obj.root_path:
+                from pathlib import Path
+                from services.workspace.workspace import ProjectWorkspace
+                ws = ProjectWorkspace.from_path(obj.root_path)
+                ctx_file = ws.role_context_file(role)
+                if ctx_file.exists():
+                    return ctx_file.read_text(encoding="utf-8")
+                return None
+    except Exception:
+        log.debug("Role context file lookup failed for %s/%s", project_id, role, exc_info=True)
+    return None
 
 
 class PromptContextBuilder(KnowledgeBase):
@@ -12,6 +44,9 @@ class PromptContextBuilder(KnowledgeBase):
 
     async def get_pm_context(self, project_id: str) -> str:
         """Context for PM phase with full story IDs for prioritization and MVP selection."""
+        cached = _read_role_file(project_id, "pm", self.db)
+        if cached is not None:
+            return cached
         project = await self.get_project(project_id)
         stories = await self.queries.get_all_stories(project_id)
         epics = await self.queries.get_all_epics(project_id)
@@ -49,6 +84,9 @@ class PromptContextBuilder(KnowledgeBase):
 
     async def get_tdd_context(self, project_id: str) -> str:
         """Full context for the TDD phase: stories + components + existing specs/tasks."""
+        cached = _read_role_file(project_id, "tdd", self.db)
+        if cached is not None:
+            return cached
         project = await self.get_project(project_id)
         stories = await self.queries.get_all_stories(project_id)
         components = await self.queries.get_all_components(project_id)
@@ -99,6 +137,9 @@ class PromptContextBuilder(KnowledgeBase):
 
     async def get_full_review_context(self, project_id: str) -> str:
         """Return a formatted string of all artifacts with IDs for the reviewer LLM."""
+        cached = _read_role_file(project_id, "review", self.db)
+        if cached is not None:
+            return cached
         project = await self.get_project(project_id)
         stories = await self.queries.get_all_stories(project_id)
         components = await self.queries.get_all_components(project_id)
