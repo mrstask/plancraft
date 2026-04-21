@@ -6,7 +6,14 @@ from sqlalchemy.pool import StaticPool
 from database import Base
 from models import db as models_db  # noqa: F401
 from models.db import Project
-from models.domain import AddUserStoryArgs, SetMvpScopeArgs, UpdateUserStoryArgs
+from models.domain import (
+    AddRoadmapItemArgs,
+    AddTechStackEntryArgs,
+    AddUserStoryArgs,
+    SetMvpScopeArgs,
+    SetProjectMissionArgs,
+    UpdateUserStoryArgs,
+)
 from services.knowledge import KnowledgeService
 
 
@@ -46,10 +53,11 @@ class KnowledgeServiceTests(unittest.IsolatedAsyncioTestCase):
             story_id = result.split(": ", 1)[1]
 
             await svc.update_user_story(
+                project.id,
                 UpdateUserStoryArgs(
                     story_id=story_id,
                     acceptance_criteria=["updated criterion"],
-                )
+                ),
             )
 
             story = await svc.get_story(project.id, story_id)
@@ -110,3 +118,45 @@ class KnowledgeServiceTests(unittest.IsolatedAsyncioTestCase):
 
             self.assertIsNotNone(await svc.get_story(project_a.id, story_id))
             self.assertIsNone(await svc.get_story(project_b.id, story_id))
+
+    async def test_founder_artifacts_are_persisted(self):
+        async with self.session_factory() as session:
+            project = Project(name="Planner")
+            session.add(project)
+            await session.commit()
+            await session.refresh(project)
+
+            svc = KnowledgeService(session)
+            await svc.set_project_mission(
+                project.id,
+                SetProjectMissionArgs(
+                    statement="Help product teams turn ideas into a delivery plan.",
+                    target_users="product teams",
+                    problem="Planning context is spread across disconnected docs.",
+                ),
+            )
+            await svc.add_roadmap_item(
+                project.id,
+                AddRoadmapItemArgs(
+                    title="Launch the planning workflow",
+                    description="Ship the first planning flow and validate that teams can frame a project end to end.",
+                    mvp=True,
+                ),
+            )
+            await svc.add_tech_stack_entry(
+                project.id,
+                AddTechStackEntryArgs(
+                    layer="backend",
+                    choice="FastAPI",
+                    rationale="It matches the team's Python stack, supports quick iteration, and keeps the service model simple for v1.",
+                ),
+            )
+
+            mission = await svc.get_project_mission(project.id)
+            roadmap = await svc.get_all_roadmap_items(project.id)
+            tech = await svc.get_all_tech_stack_entries(project.id)
+
+            self.assertEqual(mission.target_users, "product teams")
+            self.assertEqual(len(roadmap), 1)
+            self.assertTrue(roadmap[0].mvp)
+            self.assertEqual(tech[0].choice, "FastAPI")

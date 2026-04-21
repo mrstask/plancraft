@@ -22,6 +22,7 @@ class TestProjectWorkspace(unittest.TestCase):
     def test_scaffold_creates_all_dirs(self):
         ws = self._make_ws()
         expected = [
+            "product",
             "docs/arc42",
             "docs/adr",
             "docs/stories",
@@ -45,6 +46,9 @@ class TestProjectWorkspace(unittest.TestCase):
         self.assertEqual(ws.readme.name, "README.md")
         self.assertEqual(ws.c4_workspace.name, "workspace.dsl")
         self.assertEqual(ws.tasks_json.name, "tasks.json")
+        self.assertEqual(ws.mission_file.name, "mission.md")
+        self.assertEqual(ws.roadmap_file.name, "roadmap.md")
+        self.assertEqual(ws.tech_stack_file.name, "tech-stack.md")
         self.assertEqual(ws.spec_file(1).name, "SPEC-001.md")
         self.assertEqual(ws.task_file(3).name, "TASK-003.md")
         self.assertEqual(ws.story_file(7).name, "US-007.md")
@@ -211,6 +215,34 @@ class TestArtifactRenderers(unittest.TestCase):
         self.assertIn("My App", text)
         self.assertIn("arc42", text)
         self.assertIn("tasks.json", text)
+        self.assertIn("product/mission.md", text)
+
+    def test_founder_renderers(self):
+        from services.workspace.renderers.mission import render_mission
+        from services.workspace.renderers.roadmap import render_roadmap
+        from services.workspace.renderers.tech_stack import render_tech_stack
+
+        ws = self._make_ws()
+        mission = MagicMock()
+        mission.statement = "Help teams plan clearly."
+        mission.target_users = "product teams"
+        mission.problem = "Planning context is fragmented."
+
+        roadmap_item = MagicMock()
+        roadmap_item.ordinal = 1
+        roadmap_item.title = "Validate the core workflow"
+        roadmap_item.description = "Ship the first planning loop."
+        roadmap_item.mvp = True
+        roadmap_item.linked_epic_id = None
+
+        tech_entry = MagicMock()
+        tech_entry.layer = "backend"
+        tech_entry.choice = "FastAPI"
+        tech_entry.rationale = "Python-first stack with fast iteration speed for an internal planning product."
+
+        self.assertTrue(render_mission(ws, mission).exists())
+        self.assertTrue(render_roadmap(ws, [roadmap_item]).exists())
+        self.assertTrue(render_tech_stack(ws, [tech_entry]).exists())
 
 
 if __name__ == "__main__":

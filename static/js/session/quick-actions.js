@@ -1,4 +1,10 @@
 export const QUICK_ACTIONS = {
+    founder: [
+        { icon: '🎯', label: 'Define the mission', prompt: 'Draft a concise mission statement with target users and the main outcome this product should create.' },
+        { icon: '🗺️', label: 'Outline the roadmap', prompt: 'Propose the top roadmap outcomes in priority order and mark what belongs in the MVP.' },
+        { icon: '🧱', label: 'Choose the stack', prompt: 'Recommend a pragmatic tech stack for v1 and explain why each choice fits.' },
+        { icon: '⚖️', label: 'Challenge the framing', prompt: 'What is weak or risky about the current mission, roadmap, or stack choices? Push back where needed.' },
+    ],
     ba: [
         { icon: '❓', label: 'Ask me clarifying questions', prompt: 'Please ask me targeted clarifying questions to better understand the problem, users, and their pain points.' },
         { icon: '👤', label: 'Define user personas', prompt: 'Help me define the key user personas for this project — who they are, their goals, and frustrations.' },

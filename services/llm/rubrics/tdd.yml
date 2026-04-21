@@ -1,0 +1,11 @@
+version: "0.1.0"
+rules:
+  - id: tdd.stories_have_specs
+    severity: block
+    text: "Every user story must have at least one test spec after TDD turn."
+  - id: tdd.tasks_proposed
+    severity: block
+    text: "TDD must propose at least one task."
+  - id: tdd.tasks_link_specs
+    severity: warn
+    text: "Each task should link to at least one test spec."

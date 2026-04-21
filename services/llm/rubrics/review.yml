@@ -1,0 +1,13 @@
+# Reviewer rubric. Expanded in M1 to extract additional rules from the
+# project's constitution at evaluation time.
+version: "0.1.0"
+rules:
+  - id: review.no_duplicate_components
+    severity: warn
+    text: "No two components should have near-identical names."
+  - id: review.no_duplicate_decisions
+    severity: warn
+    text: "Architecture decisions should not duplicate each other."
+  - id: review.constitution_compliance
+    severity: block
+    text: "Project output must satisfy every block-severity rule in the constitution."

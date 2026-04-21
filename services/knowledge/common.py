@@ -20,8 +20,9 @@ def decision_fingerprint(title: str, decision: str) -> str:
 
 
 class KnowledgeBase:
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession, feature_id: str | None = None):
         self.db = db
+        self.feature_id = feature_id
 
     async def get_project(self, project_id: str) -> Project:
         result = await self.db.execute(select(Project).where(Project.id == project_id))

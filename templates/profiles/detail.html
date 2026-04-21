@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}{{ profile.name }} — Profile{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 py-10 space-y-6">
+    <div class="flex items-start justify-between gap-4">
+        <div>
+            <a href="/profiles" class="text-sm text-gray-500 hover:text-gray-700">← Profiles</a>
+            <h1 class="text-3xl font-bold text-gray-900 mt-2">{{ profile.name }}</h1>
+            <p class="text-gray-500 mt-2">Editing the profile updates future projects only. Existing inherited projects stay independent.</p>
+        </div>
+        <div class="flex gap-2">
+            <form method="POST" action="/profiles/{{ profile.id }}/duplicate">
+                <button type="submit" class="px-4 py-2 rounded-xl border border-gray-300 bg-white text-sm hover:bg-gray-50">
+                    Duplicate
+                </button>
+            </form>
+            <form method="POST" action="/profiles/{{ profile.id }}/delete" onsubmit="return confirm('Delete this profile? Existing projects will not be affected.');">
+                <button type="submit" class="px-4 py-2 rounded-xl border border-red-200 bg-red-50 text-red-700 text-sm hover:bg-red-100">
+                    Delete
+                </button>
+            </form>
+        </div>
+    </div>
+
+    {% if error %}
+    <div class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{{ error }}</div>
+    {% endif %}
+
+    <form method="POST" action="/profiles/{{ profile.id }}" class="space-y-6">
+        <div class="grid lg:grid-cols-3 gap-4">
+            <div class="bg-white border border-gray-200 rounded-2xl p-4 space-y-3">
+                <h2 class="text-sm font-semibold text-gray-900">Metadata</h2>
+                <div>
+                    <label class="text-xs font-semibold uppercase tracking-wide text-gray-400">Name</label>
+                    <input type="text" name="name" value="{{ profile.name }}" required class="mt-1 w-full border border-gray-300 rounded-xl px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label class="text-xs font-semibold uppercase tracking-wide text-gray-400">Description</label>
+                    <textarea name="description" rows="5" class="mt-1 w-full border border-gray-300 rounded-xl px-3 py-2 text-sm">{{ profile.description }}</textarea>
+                </div>
+                <div>
+                    <label class="text-xs font-semibold uppercase tracking-wide text-gray-400">Version</label>
+                    <input type="text" name="version" value="{{ profile.version }}" class="mt-1 w-full border border-gray-300 rounded-xl px-3 py-2 text-sm">
+                </div>
+            </div>
+
+            <div class="bg-white border border-gray-200 rounded-2xl p-4 lg:col-span-2">
+                <h2 class="text-sm font-semibold text-gray-900">Constitution</h2>
+                <textarea
+                    name="constitution_md"
+                    rows="18"
+                    class="mt-3 w-full border border-gray-300 rounded-2xl px-4 py-3 text-sm font-mono"
+                >{{ profile.constitution_md }}</textarea>
+            </div>
+        </div>
+
+        <div class="grid lg:grid-cols-2 gap-4">
+            <div class="bg-white border border-gray-200 rounded-2xl p-4">
+                <div class="flex items-center justify-between gap-3">
+                    <h2 class="text-sm font-semibold text-gray-900">Tech Stack Template</h2>
+                    <span class="text-xs text-gray-400">JSON array</span>
+                </div>
+                <p class="text-sm text-gray-500 mt-2">
+                    Each entry should look like <code>{"layer":"backend","choice":"FastAPI","rationale":"..."}</code>.
+                </p>
+                <textarea
+                    name="tech_stack_json"
+                    rows="18"
+                    class="mt-3 w-full border border-gray-300 rounded-2xl px-4 py-3 text-sm font-mono"
+                >{{ tech_stack_json }}</textarea>
+            </div>
+
+            <div class="bg-white border border-gray-200 rounded-2xl p-4">
+                <div class="flex items-center justify-between gap-3">
+                    <h2 class="text-sm font-semibold text-gray-900">Conventions</h2>
+                    <span class="text-xs text-gray-400">JSON object</span>
+                </div>
+                <p class="text-sm text-gray-500 mt-2">
+                    Store reusable conventions like naming rules, review norms, or architecture preferences.
+                </p>
+                <textarea
+                    name="conventions_json"
+                    rows="18"
+                    class="mt-3 w-full border border-gray-300 rounded-2xl px-4 py-3 text-sm font-mono"
+                >{{ conventions_json }}</textarea>
+            </div>
+        </div>
+
+        <div class="flex justify-end">
+            <button type="submit" class="bg-blue-600 text-white rounded-xl px-5 py-2.5 text-sm font-medium hover:bg-blue-700 transition">
+                Save profile
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}

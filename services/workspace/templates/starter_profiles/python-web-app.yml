@@ -1,0 +1,31 @@
+{
+  "name": "Python Web App",
+  "description": "Defaults for Python-first internal tools and web products with a server-rendered UI.",
+  "version": "1.0.0",
+  "constitution_md": "# Constitution\n\n## Quality rules\n- Favor backend simplicity and explicit domain models over clever abstractions.\n- Keep API boundaries narrow and document the responsibility of each service module.\n- Add tests for any workflow that changes persisted state or user-visible behavior.\n\n## Delivery rules\n- Ship a thin vertical slice first, then deepen the feature set with evidence.\n- Capture architecture decisions when a framework or data-model choice becomes sticky.\n",
+  "tech_stack_template": [
+    {
+      "layer": "frontend",
+      "choice": "Jinja templates with HTMX",
+      "rationale": "This keeps the UI close to the backend and works well for fast-moving product iterations."
+    },
+    {
+      "layer": "backend",
+      "choice": "FastAPI",
+      "rationale": "FastAPI offers straightforward routing, async support, and predictable ergonomics for Python teams."
+    },
+    {
+      "layer": "storage",
+      "choice": "SQLite or PostgreSQL via SQLAlchemy",
+      "rationale": "The app can start small on SQLite and graduate cleanly to PostgreSQL when concurrency or deployment needs grow."
+    }
+  ],
+  "conventions": {
+    "testing": {
+      "default": "unit tests for domain logic, integration tests for route-level behavior"
+    },
+    "architecture": {
+      "preference": "keep IO at the edges and business rules in services"
+    }
+  }
+}

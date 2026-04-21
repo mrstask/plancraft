@@ -1,0 +1,31 @@
+{
+  "name": "Generic Product",
+  "description": "A balanced starting point for new product teams shaping a general-purpose software project.",
+  "version": "1.0.0",
+  "constitution_md": "# Constitution\n\n## Quality rules\n- Every important workflow should be backed by explicit acceptance criteria.\n- Prefer simple, maintainable solutions over premature complexity.\n- Record meaningful trade-offs when architecture choices narrow future options.\n\n## Collaboration rules\n- Optimize for clarity in artifacts so the next role can build confidently.\n- Keep docs and generated workspace files in sync with the database.\n",
+  "tech_stack_template": [
+    {
+      "layer": "frontend",
+      "choice": "Server-rendered web UI",
+      "rationale": "A conservative default keeps the first release quick to ship and easier to evolve while product direction is still changing."
+    },
+    {
+      "layer": "backend",
+      "choice": "Python service layer",
+      "rationale": "Python keeps iteration speed high for product planning workflows and leaves plenty of room for automation later."
+    },
+    {
+      "layer": "storage",
+      "choice": "Relational database",
+      "rationale": "Structured planning data and cross-artifact relationships benefit from transactional storage and straightforward querying."
+    }
+  ],
+  "conventions": {
+    "review": {
+      "focus": "bugs, regressions, missing tests"
+    },
+    "documentation": {
+      "style": "brief, explicit, easy to scan"
+    }
+  }
+}

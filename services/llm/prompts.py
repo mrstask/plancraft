@@ -5,12 +5,14 @@ from models.domain import KnowledgeSnapshot
 from roles import (
     ArchitectRole,
     BusinessAnalystRole,
+    FounderRole,
     ProductManagerRole,
     ReviewerRole,
     TDDTesterRole,
 )
 
 ROLE_MAP = {
+    "founder": FounderRole,
     "ba": BusinessAnalystRole,
     "pm": ProductManagerRole,
     "architect": ArchitectRole,
@@ -19,11 +21,27 @@ ROLE_MAP = {
 }
 
 PHASE_TOOL_RULES = {
+    "founder": (
+        "- When you define or revise the product mission -> call set_project_mission().\n"
+        "- When you identify a roadmap milestone or product outcome -> call add_roadmap_item().\n"
+        "- When you choose or refine a stack decision -> call add_tech_stack_entry().\n"
+        "- IMPORTANT: Always write your conversational reply in the same response as any tool calls.\n"
+        "  Never call tools silently — the user must receive a visible text response every turn.\n"
+    ),
     "ba": (
         "- When you articulate or refine the problem statement -> call set_problem_statement().\n"
+        "- When you capture business goals, metrics, or scope -> call set_vision_scope().\n"
+        "- When you identify a user persona -> call add_persona() immediately.\n"
+        "- When you map a user journey -> call add_user_flow() with all steps.\n"
         "- When you identify a user story -> call add_user_story() immediately.\n"
         "- When you refine an existing story -> call update_user_story().\n"
-        "- When you note a constraint -> call record_constraint().\n"
+        "- When you identify a business rule -> call add_business_rule().\n"
+        "- When you identify a data entity -> call add_data_entity().\n"
+        "- When you identify a functional requirement -> call add_functional_requirement().\n"
+        "- When you define a domain term -> call add_glossary_term().\n"
+        "- When the user confirms LLM component behavior -> call set_llm_interaction_model().\n"
+        "- When you note a technical/business/time constraint -> call record_constraint().\n"
+        "- After every answered clarification point -> call answer_clarification_point().\n"
         "- IMPORTANT: Always write your conversational reply in the same response as any tool calls.\n"
         "  Never call tools silently — the user must receive a visible text response every turn.\n"
     ),
@@ -37,6 +55,8 @@ PHASE_TOOL_RULES = {
     "architect": (
         "- When you propose a component -> call add_component() immediately, one call per component.\n"
         "- When you make an architecture decision -> call record_decision() immediately.\n"
+        "- When a component has an external interface or boundary -> call add_interface_contract() immediately.\n"
+        "- Skip contracts only for components with no external interface.\n"
         "- When you note a technical constraint -> call record_constraint().\n"
         "- IMPORTANT: Always write your conversational reply in the same response as any tool calls.\n"
         "  Never call tools silently — the user must receive a visible text response every turn.\n"

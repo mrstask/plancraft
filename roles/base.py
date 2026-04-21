@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 
 class BaseRole(ABC):
     name: str
-    persona_key: str  # 'ba' | 'pm' | 'architect' | 'tdd'
+    persona_key: str  # 'founder' | 'ba' | 'pm' | 'architect' | 'tdd' | 'review'
 
     @property
     @abstractmethod

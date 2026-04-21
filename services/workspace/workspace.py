@@ -18,14 +18,18 @@ class ProjectWorkspace:
 
     # Sub-directories created on scaffold
     _DIRS = [
+        "product",
+        "specs",
         "docs/arc42",
         "docs/adr",
         "docs/stories",
+        "docs/ba",
         "docs/c4",
         "docs/diagrams",
         "tests/specs",
         "tasks",
         ".plancraft/role-context",
+        ".plancraft",
     ]
 
     def __init__(self, workspace_path: Path) -> None:
@@ -91,8 +95,31 @@ class ProjectWorkspace:
         return self.stories_dir / f"US-{n:03d}.md"
 
     @property
+    def ba_dir(self) -> Path:
+        return self.root / "docs" / "ba"
+
+    def ba_file(self, name: str) -> Path:
+        return self.ba_dir / name
+
+    @property
     def c4_dir(self) -> Path:
         return self.root / "docs" / "c4"
+
+    @property
+    def product_dir(self) -> Path:
+        return self.root / "product"
+
+    @property
+    def mission_file(self) -> Path:
+        return self.product_dir / "mission.md"
+
+    @property
+    def roadmap_file(self) -> Path:
+        return self.product_dir / "roadmap.md"
+
+    @property
+    def tech_stack_file(self) -> Path:
+        return self.product_dir / "tech-stack.md"
 
     @property
     def c4_workspace(self) -> Path:
@@ -105,6 +132,31 @@ class ProjectWorkspace:
     @property
     def specs_dir(self) -> Path:
         return self.root / "tests" / "specs"
+
+    @property
+    def feature_specs_dir(self) -> Path:
+        return self.root / "specs"
+
+    def feature_dir(self, feature) -> Path:
+        return self.feature_specs_dir / f"{feature.ordinal:03d}-{feature.slug}"
+
+    def feature_file(self, feature, name: str) -> Path:
+        return self.feature_dir(feature) / name
+
+    def feature_contracts_dir(self, feature) -> Path:
+        return self.feature_dir(feature) / "contracts"
+
+    def feature_contract_file(self, feature, kind: str, name: str) -> Path:
+        return self.feature_contracts_dir(feature) / f"{_slugify(kind)}-{_slugify(name)}.md"
+
+    def feature_adr_dir(self, feature) -> Path:
+        return self.feature_dir(feature) / "adrs"
+
+    def feature_adr_file(self, feature, n: int, title: str) -> Path:
+        return self.feature_adr_dir(feature) / f"{n:04d}-{_slugify(title)}.md"
+
+    def feature_research_file(self, feature) -> Path:
+        return self.feature_dir(feature) / "research.md"
 
     def spec_file(self, n: int) -> Path:
         return self.specs_dir / f"SPEC-{n:03d}.md"
@@ -128,5 +180,13 @@ class ProjectWorkspace:
         return self.plancraft_dir / "role-context" / f"{role}.md"
 
     @property
+    def constitution_file(self) -> Path:
+        return self.plancraft_dir / "constitution.md"
+
+    @property
     def snapshot_file(self) -> Path:
         return self.plancraft_dir / "snapshot.json"
+
+    @property
+    def profile_file(self) -> Path:
+        return self.plancraft_dir / "profile.yml"

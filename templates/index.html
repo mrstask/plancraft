@@ -3,27 +3,71 @@
 
 {% block content %}
 <div class="max-w-2xl mx-auto mt-20 px-4">
-    <h1 class="text-3xl font-bold mb-2">🧠 Dev Planning Studio</h1>
-    <p class="text-gray-500 mb-8">
+    <div class="flex items-start justify-between gap-4 mb-8">
+        <div>
+            <h1 class="text-3xl font-bold mb-2">🧠 Dev Planning Studio</h1>
+            <p class="text-gray-500">
         Plan your software project with AI — user stories, architecture, TDD specs, and task breakdowns.
-    </p>
+            </p>
+        </div>
+        <a href="/profiles" class="shrink-0 px-4 py-2 rounded-xl border border-gray-300 bg-white text-sm hover:bg-gray-50">
+            Profiles
+        </a>
+    </div>
 
     <!-- New project form -->
-    <form method="POST" action="/projects" class="flex gap-2 mb-10">
-        <input
-            type="text"
-            name="name"
-            placeholder="New project name..."
-            required
-            class="flex-1 border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-        <button
-            type="submit"
-            class="bg-blue-600 text-white px-5 py-2 rounded-lg hover:bg-blue-700 transition"
-        >
-            + New Project
-        </button>
-    </form>
+    <div class="bg-white border border-gray-200 rounded-2xl p-4 mb-10" x-data="{ creationMode: 'blank' }">
+        <form method="POST" action="/projects" class="space-y-4">
+            <input
+                type="text"
+                name="name"
+                placeholder="New project name..."
+                required
+                class="w-full border border-gray-300 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+
+            <div class="grid sm:grid-cols-2 gap-3">
+                <label class="rounded-xl border px-4 py-3 cursor-pointer" :class="creationMode === 'blank' ? 'border-blue-400 bg-blue-50' : 'border-gray-200 bg-white'">
+                    <input type="radio" name="creation_mode" value="blank" class="sr-only" x-model="creationMode">
+                    <p class="font-medium text-sm text-gray-900">Start blank</p>
+                    <p class="text-sm text-gray-500 mt-1">Begin with an empty project and shape the product from scratch.</p>
+                </label>
+                <label class="rounded-xl border px-4 py-3 cursor-pointer" :class="creationMode === 'inherit' ? 'border-blue-400 bg-blue-50' : 'border-gray-200 bg-white'">
+                    <input type="radio" name="creation_mode" value="inherit" class="sr-only" x-model="creationMode">
+                    <p class="font-medium text-sm text-gray-900">Inherit from profile</p>
+                    <p class="text-sm text-gray-500 mt-1">Seed the constitution and tech-stack defaults from a reusable profile.</p>
+                </label>
+            </div>
+
+            <div x-show="creationMode === 'inherit'" x-transition class="space-y-3">
+                <select
+                    name="profile_id"
+                    class="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm"
+                    hx-get="/profiles/preview"
+                    hx-trigger="change, load"
+                    hx-target="#profile-preview"
+                    hx-include="[name='profile_id']"
+                >
+                    <option value="">Choose a profile…</option>
+                    {% for profile in profiles %}
+                    <option value="{{ profile.id }}">{{ profile.name }} · {{ profile.version }}</option>
+                    {% endfor %}
+                </select>
+                <div id="profile-preview">
+                    <div class="rounded-2xl border border-dashed border-gray-300 bg-white px-4 py-4 text-sm text-gray-400">
+                        Select a profile to preview the constitution and tech-stack defaults that will seed the new project.
+                    </div>
+                </div>
+            </div>
+
+            <button
+                type="submit"
+                class="bg-blue-600 text-white px-5 py-2 rounded-xl hover:bg-blue-700 transition"
+            >
+                + New Project
+            </button>
+        </form>
+    </div>
 
     <!-- Project list -->
     {% if projects %}

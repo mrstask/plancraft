@@ -5,6 +5,7 @@
 
 {# Welcome messages shown when a tab has no history yet #}
 {% set WELCOME = {
+    'founder':   "I'm your Founder. Let's frame the product first: who it's for, what problem it solves, what the roadmap looks like, and which stack we want to commit to.",
     'ba':        "Hi! I'm your Business Analyst. Let's start by understanding the problem. Who are the users and what frustrates them right now?",
     'pm':        "I'm your Product Manager. The BA phase captured some great stories. Let's organise them into epics and lock down the MVP scope.",
     'architect': "I'm your Architect. Based on the stories and epics, let's design the system. What are the core components this app needs?",
@@ -22,6 +23,7 @@
             id="doc-sidebar-content"
             class="flex flex-col h-full"
             hx-get="/projects/{{ project.id }}/doc-tree"
+            {% if feature %}hx-vals='{"feature_id":"{{ feature.id }}"}'{% endif %}
             hx-trigger="load"
         >
             <!-- skeleton while loading -->
@@ -41,6 +43,55 @@
          CENTER — conversation
     ================================================================ -->
     <main class="flex-1 flex flex-col min-w-0">
+
+        <div class="bg-gray-50 border-b border-gray-200 px-4 py-3 shrink-0">
+            <div class="flex items-start justify-between gap-4">
+                <div>
+                    {% if feature %}
+                    <a href="/projects/{{ project.id }}" class="text-xs text-gray-500 hover:text-gray-700">← Back to project loop</a>
+                    <p class="text-xs uppercase tracking-wide text-gray-400 font-semibold mt-1">Feature Loop</p>
+                    <h1 class="text-lg font-semibold text-gray-900 mt-1">{{ feature.ordinal }}. {{ feature.title }}</h1>
+                    <p class="text-sm text-gray-500 mt-1">{{ feature.description or 'Feature-specific planning loop.' }}</p>
+                    {% else %}
+                    <p class="text-xs uppercase tracking-wide text-gray-400 font-semibold">Project Loop</p>
+                    <h1 class="text-lg font-semibold text-gray-900 mt-1">{{ project.name }}</h1>
+                    {% if project.profile_ref %}
+                    <a href="/profiles?profile_ref={{ project.profile_ref | urlencode }}" class="inline-flex mt-2 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100">
+                        from {{ project.profile_ref }}
+                    </a>
+                    {% endif %}
+                    {% endif %}
+                </div>
+                <div class="w-72 shrink-0">
+                    <p class="text-xs uppercase tracking-wide text-gray-400 font-semibold mb-2">Features</p>
+                    <div class="space-y-2 max-h-28 overflow-y-auto">
+                        {% if features %}
+                        {% for item in features %}
+                        <a
+                            href="/projects/{{ project.id }}/features/{{ item.id }}"
+                            class="block rounded-xl border px-3 py-2 text-sm {% if feature and item.id == feature.id %}border-blue-400 bg-blue-50{% else %}border-gray-200 bg-white hover:bg-gray-50{% endif %}"
+                        >
+                            <div class="flex items-center justify-between gap-2">
+                                <span class="font-medium text-gray-900">{{ "%03d"|format(item.ordinal) }} {{ item.title }}</span>
+                                <span class="text-xs text-gray-400">{{ item.status }}</span>
+                            </div>
+                        </a>
+                        {% endfor %}
+                        {% else %}
+                        <div class="rounded-xl border border-dashed border-gray-300 px-3 py-3 text-sm text-gray-400">
+                            No features yet. Create the first feature to start the iterative loop.
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% if not feature %}
+                    <form method="POST" action="/projects/{{ project.id }}/features" class="mt-2 flex gap-2">
+                        <input type="text" name="title" placeholder="New feature title" required class="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm">
+                        <button type="submit" class="px-3 py-2 rounded-xl bg-blue-600 text-white text-sm hover:bg-blue-700">Add</button>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
 
         <!-- Phase stepper -->
         <div class="bg-white border-b border-gray-200 px-4 py-2.5 flex items-center gap-1 overflow-x-auto shrink-0">
@@ -78,12 +129,42 @@
         <!-- Message area — one pane per tab, shown/hidden via x-show -->
         <div id="messages" class="flex-1 overflow-y-auto px-5 py-4 min-h-0">
 
-            {% for tab_key in ['ba', 'pm', 'architect', 'tdd', 'review'] %}
+            {% for tab_key in tab_keys %}
             <div
                 x-show="activeTab === '{{ tab_key }}'"
                 class="space-y-4"
                 id="tab-pane-{{ tab_key }}"
             >
+                {% if tab_key == 'founder' %}
+                <div
+                    hx-get="/projects/{{ project.id }}/founder/panel"
+                    hx-trigger="load"
+                    hx-target="this"
+                    hx-swap="innerHTML"
+                >
+                    <div class="rounded-2xl border border-gray-200 bg-white p-4 text-sm text-gray-400">Loading founder artifacts…</div>
+                </div>
+                {% endif %}
+                {% if feature and tab_key == 'ba' %}
+                <div
+                    hx-get="/projects/{{ project.id }}/features/{{ feature.id }}/ba-panel"
+                    hx-trigger="load"
+                    hx-target="this"
+                    hx-swap="innerHTML"
+                >
+                    <div class="rounded-2xl border border-gray-200 bg-white p-4 text-sm text-gray-400">Loading research log…</div>
+                </div>
+                {% endif %}
+                {% if feature and tab_key == 'architect' %}
+                <div
+                    hx-get="/projects/{{ project.id }}/features/{{ feature.id }}/architect-panel"
+                    hx-trigger="load"
+                    hx-target="this"
+                    hx-swap="innerHTML"
+                >
+                    <div class="rounded-2xl border border-gray-200 bg-white p-4 text-sm text-gray-400">Loading contracts…</div>
+                </div>
+                {% endif %}
                 {% set tab_history = history_by_tab.get(tab_key, []) %}
                 {% if not tab_history %}
                 <!-- Welcome message for this tab (shown before any messages) -->
@@ -172,6 +253,7 @@
         class="w-64 bg-white border-l border-gray-200 flex flex-col shrink-0 overflow-y-auto"
         id="knowledge-panel"
         hx-get="/projects/{{ project.id }}/knowledge-panel"
+        {% if feature %}hx-vals='{"feature_id":"{{ feature.id }}"}'{% endif %}
         hx-trigger="load"
     >
         <div class="p-3 border-b border-gray-200">
@@ -185,6 +267,7 @@
 <script>
 window.PLANNING_SESSION_BOOTSTRAP = {
     projectId: "{{ project.id }}",
+    featureId: {% if feature %}"{{ feature.id }}"{% else %}null{% endif %},
     initialTab: "{{ initial_tab }}",
     phases: {{ phases_json | safe }},
 };

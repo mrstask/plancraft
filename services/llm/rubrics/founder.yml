@@ -1,0 +1,14 @@
+version: "1.0.0"
+rules:
+  - id: founder.mission_specificity
+    severity: block
+    text: "Mission must be concise, name the target user, and describe the intended outcome."
+  - id: founder.roadmap_coverage
+    severity: block
+    text: "Roadmap items should reflect the main goals implied by the mission."
+  - id: founder.tech_stack_rationale
+    severity: block
+    text: "Every tech stack entry must include a concrete rationale longer than 40 characters."
+  - id: founder.mvp_flag
+    severity: block
+    text: "At least one roadmap item must be flagged as MVP."

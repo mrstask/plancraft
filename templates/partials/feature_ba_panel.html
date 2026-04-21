@@ -1,0 +1,61 @@
+<div id="feature-ba-panel" class="mb-5 space-y-4">
+    <section class="bg-white border border-gray-200 rounded-2xl p-4 space-y-3">
+        <div>
+            <p class="text-xs uppercase tracking-wide text-gray-400 font-semibold">Research Log</p>
+            <h3 class="text-sm font-semibold text-gray-800 mt-1">Clarification answers for {{ feature.title }}</h3>
+        </div>
+
+        {% if clarifications %}
+        <div class="space-y-3">
+            {% for item in clarifications %}
+            <form
+                class="rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-2"
+                hx-patch="/projects/{{ project_id }}/features/{{ feature.id }}/clarifications/{{ item.point_id }}"
+                hx-target="#feature-ba-panel"
+                hx-swap="outerHTML"
+            >
+                <div class="flex items-center justify-between gap-3">
+                    <p class="text-sm font-medium text-gray-800">{{ item.point_id }}</p>
+                    <select name="status" class="border border-gray-300 rounded-lg px-2 py-1 text-xs">
+                        <option value="answered" {% if item.status == 'answered' %}selected{% endif %}>answered</option>
+                        <option value="skipped" {% if item.status == 'skipped' %}selected{% endif %}>skipped</option>
+                    </select>
+                </div>
+                <textarea name="answer" rows="3" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">{{ item.answer or '' }}</textarea>
+                <button class="px-3 py-1.5 rounded-lg bg-white border border-gray-300 text-xs font-medium text-gray-700 hover:bg-gray-100">
+                    Save answer
+                </button>
+            </form>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="rounded-xl border border-dashed border-gray-300 px-3 py-4 text-sm text-gray-400">
+            No feature-scoped clarification answers yet.
+        </div>
+        {% endif %}
+
+        {% if available_points %}
+        <div class="border-t border-gray-100 pt-3">
+            <p class="text-xs uppercase tracking-wide text-gray-400 font-semibold mb-2">Add Research Entry</p>
+            <div class="space-y-3">
+                {% for point in available_points[:4] %}
+                <form
+                    class="rounded-xl border border-gray-200 p-3 space-y-2"
+                    hx-patch="/projects/{{ project_id }}/features/{{ feature.id }}/clarifications/{{ point.id }}"
+                    hx-target="#feature-ba-panel"
+                    hx-swap="outerHTML"
+                >
+                    <p class="text-xs font-semibold text-gray-700">{{ point.name }}</p>
+                    <p class="text-xs text-gray-500">{{ point.question_to_user }}</p>
+                    <input type="hidden" name="status" value="answered">
+                    <textarea name="answer" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="Capture the canonical answer"></textarea>
+                    <button class="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-medium hover:bg-blue-700">
+                        Add answer
+                    </button>
+                </form>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </section>
+</div>

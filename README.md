@@ -11,18 +11,22 @@ Plancraft walks you through a complete software planning workflow using speciali
 You describe your idea. Plancraft's AI roles extract everything needed to build it:
 
 ```
-🔍 Business Analyst  →  problem statement, user stories, constraints
+🧭 Founder           →  mission, target users, product roadmap, tech-stack, constitution
+        ↓
+🔍 Business Analyst  →  problem statement, user stories, clarifications, constraints
         ↓
 📋 Product Manager   →  epics, story priorities, MVP scope
         ↓
-🏗️  Architect         →  components, architecture decisions (ADRs)
+🏗️  Architect         →  components, architecture decisions (ADRs), interface contracts
         ↓
 ✅ TDD Tester        →  Given/When/Then test specs, implementation tasks
         ↓
 🔎 Reviewer          →  deduplication, polish, cross-category consistency
         ↓
-📦 Export            →  workspace zip  +  task DAG JSON  +  arc42 Markdown
+📦 Export            →  workspace zip  +  task DAG JSON  +  arc42 Markdown  +  spec-kit / Agent-OS / OpenSpec bundles
 ```
+
+Each role executes inside an evaluator loop (ReAct): the actor produces an artifact, a rubric-driven evaluator scores it, and the loop retries up to `EVALUATOR_MAX_ITERATIONS` before escalating to the user with the critique shown. Traces are persisted per phase for inspection.
 
 The exported task DAG is directly consumable by autonomous agent systems (e.g. [dev_team](https://github.com/mrstask/dev_team)) to kick off implementation without any manual handoff.
 
@@ -30,6 +34,13 @@ The exported task DAG is directly consumable by autonomous agent systems (e.g. [
 
 ## Features
 
+- **Evaluator-in-the-loop (ReAct)** — every role runs through `LoopController`: actor → evaluator (rubric-driven) → retry/escalate. When `EVALUATOR_ENABLED=false` every role uses `NullEvaluator` so traces are still written with no retries. Per-phase traces are persisted and browsable via `/traces`.
+- **Constitution per project** — each project carries a `constitution.md` (seeded from a default template, inheritable from profiles) that the evaluator checks against. Rendered into the workspace under `.plancraft/constitution.md`.
+- **Founder role + product triad** — a new Founder phase captures mission, target users, roadmap (with MVP flag), and tech-stack choices, rendered into `product/mission.md`, `product/roadmap.md`, and `product/tech-stack.md`.
+- **Profiles (cross-project reusables)** — named profiles bundle constitution + tech-stack template + conventions. Projects can inherit from a profile at creation and save a profile from an existing project. Stored under `~/.plancraft/profiles` (path configurable via `PROFILES_ROOT`).
+- **Multi-feature projects** — the Feature entity scopes stories, ADRs, test specs, tasks, clarifications, contracts, and research to a specific feature. Legacy single-feature projects are backfilled into a synthetic "initial" feature (behind `FEATURE_SCOPING_ENABLED`, defaults to `false`; dry-run and transactional).
+- **Interface contracts + per-feature research** — architects capture API/event/schema contracts as `specs/NNN-slug/contracts/<kind>-<name>.md` and per-feature research/clarifications as `specs/NNN-slug/research.md`. Feature-local ADRs live in `specs/NNN-slug/adrs/`; cross-cutting ADRs remain in `architecture/adrs/`.
+- **Pluggable exporter framework (M6)** — export targets are registered through a common `ExportTarget` contract with structural validators. Ships with `workspace`, `arc42`, `tasks`, and `ba` targets; spec-kit / Agent-OS / OpenSpec targets can be added by implementing the contract (framework ready, bundled targets pending).
 - **Phase-gated flow** — each tab unlocks only when the previous phase produces real artifacts, keeping the conversation focused
 - **Explicit MVP persistence** — the PM phase now saves the MVP cut and rationale, and architecture stays locked until both epics and MVP scope exist
 - **Structured knowledge base** — every insight is persisted as a typed record (stories, epics, components, ADRs, test specs, tasks) with full SQLite backing
@@ -108,6 +119,22 @@ TDD_MODEL=gemma4:31b
 # Root directory where per-project workspace folders are created
 # Can be absolute or relative to the working directory
 PROJECTS_ROOT=./projects
+
+# Cross-project profile storage (constitutions, tech-stack templates, conventions)
+PROFILES_ROOT=~/.plancraft/profiles
+
+# Feature-scoping backfill (M4). Ship with `false`; flip to `true` only when
+# ready to run the one-shot migration of legacy projects into an "initial" feature.
+FEATURE_SCOPING_ENABLED=false
+
+# Evaluator loop (M0). With EVALUATOR_ENABLED=false every role uses NullEvaluator:
+# traces are written but no retries happen. Flip to `true` to enable real evaluation.
+EVALUATOR_ENABLED=false
+EVALUATOR_MAX_ITERATIONS=3
+EVALUATOR_SCORE_THRESHOLD=0.8
+EVALUATOR_ESCALATE_AFTER=2
+EVALUATOR_MODEL=gemma4:latest
+TRACE_RETENTION_DAYS=30
 ```
 
 ---
@@ -125,7 +152,9 @@ plancraft/
 │   └── domain.py            # Pydantic command models + snapshot/phase status logic
 │
 ├── roles/                   # AI role definitions (system prompt fragments)
+│   ├── founder.py
 │   ├── business_analyst.py
+│   ├── ba_clarifications.py
 │   ├── product_manager.py
 │   ├── architect.py
 │   ├── tdd_tester.py
@@ -141,16 +170,31 @@ plancraft/
 │   ├── llm/                 # LLM orchestration package
 │   │   ├── registry.py      # Shared tool registry + dispatcher
 │   │   ├── prompts.py       # Phase-aware system prompt builder
-│   │   └── streaming.py     # Ollama streaming + extraction pass
+│   │   ├── streaming.py     # Ollama streaming + extraction pass
+│   │   ├── react_loop.py    # LoopController — actor → evaluator → retry/escalate
+│   │   ├── trace_store.py   # Per-phase evaluator trace persistence
+│   │   ├── evaluators/      # Evaluator implementations (NullEvaluator, rubric-scored)
+│   │   └── rubrics/         # Role-specific evaluation rubrics
+│   ├── features/            # Feature entity service (M4 — multi-feature projects)
+│   ├── profiles/            # Profile service (M3 — cross-project reusables)
 │   ├── export/
-│   │   └── queries.py       # Export-specific read models
+│   │   ├── queries.py       # Export-specific read models
+│   │   ├── targets/         # Pluggable exporters: spec-kit, Agent-OS, OpenSpec
+│   │   └── validators/      # Structural validators per export target
 │   ├── workspace/           # Docs-as-code workspace package
 │   │   ├── workspace.py     # ProjectWorkspace — path helpers + directory scaffold
 │   │   ├── renderer.py      # Orchestrator: render_workspace() + schedule_render()
 │   │   ├── role_context.py  # Per-role context file renderers with token budgets
+│   │   ├── templates/       # Default constitution + other seed templates
 │   │   └── renderers/
 │   │       ├── arc42.py     # 12 individual arc42 section renderers
-│   │       ├── adr.py       # One NNNN-slug.md per architecture decision
+│   │       ├── adr.py       # Legacy (flat) ADR renderer
+│   │       ├── adrs_split.py  # Splits feature-local vs cross-cutting ADRs (M5)
+│   │       ├── constitution.py  # .plancraft/constitution.md (M1)
+│   │       ├── mission.py / roadmap.py / tech_stack.py  # product/* (M2)
+│   │       ├── feature_spec.py / feature_plan.py / feature_tasks.py  # specs/NNN/* (M4)
+│   │       ├── contracts.py # specs/NNN/contracts/*.md (M5)
+│   │       ├── research.py  # specs/NNN/research.md (M5)
 │   │       ├── stories.py   # One US-NNN.md per user story
 │   │       ├── specs.py     # One SPEC-NNN.md per test spec
 │   │       ├── tasks.py     # TASK-NNN.md files + tasks.json DAG
@@ -162,9 +206,13 @@ plancraft/
 │
 ├── routers/
 │   ├── projects.py          # Project CRUD + session view (workspace created on POST /projects)
+│   ├── founder.py           # Founder-phase endpoints: mission, roadmap, tech-stack
+│   ├── features.py          # Feature CRUD + feature-scoped session routes
+│   ├── profiles.py          # Profile CRUD + inherit/save-from-project
+│   ├── traces.py            # Evaluator trace inspection
 │   ├── chat.py              # SSE chat + full review endpoint (triggers schedule_render per turn)
 │   ├── docs.py              # Document tree sidebar
-│   └── export.py            # Download endpoints (workspace zip, task JSON, arc42 md)
+│   └── export.py            # Download endpoints (workspace zip, task JSON, arc42 md, pluggable targets)
 │
 ├── static/
 │   ├── css/
@@ -230,10 +278,11 @@ The C4 renderer emits a `workspace.dsl` consumable by the [Structurizr CLI](http
 
 ## Phase completion rules
 
-- **Business Analyst** completes when the project has a problem statement and at least one story.
+- **Founder** completes when mission, ≥1 roadmap item, and ≥1 tech-stack entry exist, and the constitution has been acknowledged.
+- **Business Analyst** completes when the project (or active feature) has a problem statement and at least one story. BA-clarifications may be run as an inner loop before handoff.
 - **Product Manager** completes when the project has at least one epic and a saved MVP scope.
-- **Architect** completes when the project has at least one component and one architecture decision.
-- **TDD Tester** completes when the project has at least one test spec and one implementation task.
+- **Architect** completes when the active feature has at least one component, one architecture decision, and the required contracts.
+- **TDD Tester** completes when the active feature has at least one test spec and one implementation task.
 - **Reviewer** remains an optional cleanup phase before export.
 
 ---
@@ -245,6 +294,8 @@ The C4 renderer emits a `workspace.dsl` consumable by the [Structurizr CLI](http
 | Workspace zip | `GET /projects/{id}/export/workspace` | Zip of the full docs-as-code directory (re-rendered fresh) |
 | Task DAG | `GET /projects/{id}/export/tasks` | JSON — tasks with dependencies, story & spec links |
 | arc42 docs | `GET /projects/{id}/export/arc42` | Single Markdown — full 12-section architecture doc (legacy) |
+| List targets | `GET /projects/{id}/export/targets` | List all registered pluggable exporters (M6) |
+| Target bundle | `GET /projects/{id}/export/download?target=<name>` | Build + validate + zip any registered target (`workspace`, `arc42`, `tasks`, `ba`) |
 
 ---
 

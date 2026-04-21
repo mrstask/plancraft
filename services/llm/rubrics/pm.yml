@@ -1,0 +1,11 @@
+version: "0.1.0"
+rules:
+  - id: pm.has_epics
+    severity: block
+    text: "PM output must produce at least one epic."
+  - id: pm.mvp_selected
+    severity: block
+    text: "PM must set an explicit MVP scope with a rationale."
+  - id: pm.mvp_story_links
+    severity: warn
+    text: "Each MVP story should be linked to an epic."

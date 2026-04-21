@@ -7,6 +7,9 @@ __pycache__/
 *.db-shm
 *.db-wal
 exports/
+.coverage
+coverage.xml
+projects/
 .DS_Store
 .idea/
 .vscode/

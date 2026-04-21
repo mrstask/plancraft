@@ -1,14 +1,37 @@
-"""Export service — builds task DAG JSON and arc42 Markdown from the knowledge model."""
+"""Export service — pluggable orchestrator + legacy build functions."""
 from __future__ import annotations
 
 from collections import defaultdict
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.db import UserStory
-from services.export.queries import ExportDataLoader
+from services.export.queries import BAExportData, ExportDataLoader
+
+
+# ---------------------------------------------------------------------------
+# Pluggable orchestrator (M6)
+# ---------------------------------------------------------------------------
+
+async def build_export(
+    target_name: str,
+    project_id: str,
+    out_dir: Path,
+    db: AsyncSession,
+):
+    """Build an export using the named target and run its validator.
+
+    Returns the populated BuildResult with schema_valid / schema_errors set.
+    """
+    from services.export.targets import get_target
+    from services.export.validators import run_validator
+
+    target = get_target(target_name)
+    result = await target.build(project_id, out_dir, db)
+    return run_validator(target_name, result)
 
 
 # ---------------------------------------------------------------------------
@@ -50,6 +73,110 @@ async def build_task_dag(project_id: str, db: AsyncSession) -> dict[str, Any]:
             "total": len(task_list),
             "by_complexity": by_complexity,
         },
+    }
+
+
+# ---------------------------------------------------------------------------
+# BA bundle JSON export (all 8 BA artifacts in one payload)
+# ---------------------------------------------------------------------------
+
+async def build_ba_bundle(project_id: str, db: AsyncSession) -> dict[str, Any]:
+    loader = ExportDataLoader(db)
+    data: BAExportData = await loader.load_ba_export(project_id)
+    now = datetime.now(timezone.utc).isoformat()
+
+    vision_scope = {
+        "problem_statement": data.problem_statement or "",
+        "target_users": data.target_users,
+        "business_goals": data.business_goals,
+        "success_metrics": data.success_metrics,
+        "in_scope": data.in_scope,
+        "out_of_scope": data.out_of_scope,
+    }
+
+    personas = [
+        {
+            "name": p.name,
+            "role": p.role,
+            "goals": list(p.goals or []),
+            "pain_points": list(p.pain_points or []),
+        }
+        for p in data.personas
+    ]
+
+    user_flows = []
+    for flow in data.user_flows:
+        sorted_steps = sorted(flow.steps or [], key=lambda s: s.order_index)
+        step_strs = []
+        for step in sorted_steps:
+            actor_prefix = f"{step.actor}: " if step.actor else ""
+            step_strs.append(f"{actor_prefix}{step.description}")
+        user_flows.append({"id": flow.id, "name": flow.name, "steps": step_strs})
+
+    user_stories = []
+    for i, s in enumerate(data.stories, start=1):
+        user_stories.append({
+            "id": f"US-{i:03d}",
+            "actor": s.as_a,
+            "action": s.i_want,
+            "value": s.so_that,
+            "acceptance_criteria": [ac.criterion for ac in (s.acceptance_criteria or [])],
+            "priority": s.priority or "should",
+            "dependencies": [],
+        })
+
+    functional_requirements = []
+    for i, fr in enumerate(data.functional_requirements, start=1):
+        story_ids = [link.story_id for link in (fr.story_links or [])]
+        functional_requirements.append({
+            "id": f"FR-{i:03d}",
+            "description": fr.description,
+            "inputs": list(fr.inputs or []),
+            "outputs": list(fr.outputs or []),
+            "related_user_stories": story_ids,
+        })
+
+    data_model = {
+        "entities": [
+            {
+                "name": e.name,
+                "attributes": list(e.attributes or []),
+                "relationships": list(e.relationships or []),
+            }
+            for e in data.data_entities
+        ]
+    }
+
+    business_rules = [
+        {
+            "id": r.id,
+            "rule": r.rule,
+            "applies_to": list(r.applies_to or []),
+        }
+        for r in data.business_rules
+    ]
+
+    llm_interaction_model = data.llm_interaction_model or {
+        "llm_role": "",
+        "interaction_pattern": "",
+        "input_format": "",
+        "output_format": "",
+        "memory_strategy": "",
+        "error_handling": [],
+    }
+
+    return {
+        "project": data.project_name,
+        "exported_at": now,
+        "vision_scope": vision_scope,
+        "personas": personas,
+        "user_flows": user_flows,
+        "user_stories": user_stories,
+        "functional_requirements": functional_requirements,
+        "data_model": data_model,
+        "business_rules": business_rules,
+        "llm_interaction_model": llm_interaction_model,
+        "terminology": data.terminology,
     }
 
 
@@ -258,7 +385,12 @@ async def build_arc42(project_id: str, db: AsyncSession) -> str:
     sections.append(f"## 11. Risks and Technical Debt\n\n{_PLACEHOLDER}")
     sections.append("---")
 
-    # 12. Glossary
-    sections.append(f"## 12. Glossary\n\n{_PLACEHOLDER}")
+    # 12. Glossary — populated from BA terminology
+    if data.terminology:
+        gloss_lines = [f"- **{entry['term']}**: {entry['definition']}" for entry in data.terminology]
+        glossary_body = "\n".join(gloss_lines)
+    else:
+        glossary_body = _PLACEHOLDER
+    sections.append(f"## 12. Glossary\n\n{glossary_body}")
 
     return "\n\n".join(sections) + "\n"

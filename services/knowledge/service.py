@@ -8,12 +8,13 @@ from .snapshots import SnapshotBuilder
 
 
 class KnowledgeService:
-    def __init__(self, db):
+    def __init__(self, db, feature_id: str | None = None):
         self.db = db
-        self.commands = ArtifactCommands(db)
-        self.queries = ArtifactQueries(db)
-        self.snapshot_builder = SnapshotBuilder(db)
-        self.context_builder = PromptContextBuilder(db)
+        self.feature_id = feature_id
+        self.commands = ArtifactCommands(db, feature_id=feature_id)
+        self.queries = ArtifactQueries(db, feature_id=feature_id)
+        self.snapshot_builder = SnapshotBuilder(db, feature_id=feature_id)
+        self.context_builder = PromptContextBuilder(db, feature_id=feature_id)
         self._parts = (
             self.commands,
             self.queries,

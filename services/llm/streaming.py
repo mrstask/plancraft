@@ -11,6 +11,7 @@ from config import settings
 from roles import (
     ArchitectRole,
     BusinessAnalystRole,
+    FounderRole,
     ProductManagerRole,
     TDDTesterRole,
 )
@@ -23,6 +24,7 @@ log = logging.getLogger(__name__)
 client = AsyncOpenAI(base_url=settings.ollama_base_url, api_key="ollama")
 
 EXTRACTION_SIGNALS = [
+    "mission", "roadmap", "tech stack", "stack",
     "component", "module", "service", "layer",
     "decision", "adr", "architecture decision",
     "user story", "as a user", "acceptance criteria",
@@ -34,6 +36,7 @@ EXTRACTION_SIGNALS = [
 # instead of firing the real tool_calls API. When we see these, we force
 # an extraction pass even if the conversational signals are sparse.
 PSEUDO_CALL_NAMES = (
+    "set_project_mission", "add_roadmap_item", "add_tech_stack_entry",
     "add_epic", "add_user_story", "update_user_story",
     "add_component", "add_test_spec", "propose_task",
     "record_decision", "record_constraint",
@@ -68,6 +71,11 @@ async def extraction_pass(
             "Your previous reply described test specifications and tasks in text instead of saving them. "
             "Call add_test_spec() for every scenario and propose_task() for every implementation task. "
             "Do not write any text."
+        )
+    elif role_tab == "founder":
+        extraction_prompt = (
+            "Looking back at your previous reply, save the mission, roadmap items, and tech stack choices "
+            "you described. Call tools only and do not write prose."
         )
     elif role_tab == "pm":
         extraction_prompt = (
@@ -191,12 +199,13 @@ def detect_persona(text: str) -> str:
     """Infer the active role from response content for the UI badge."""
     text_lower = text.lower()
     scores = {
+        "founder": sum(1 for kw in FounderRole().trigger_keywords if kw in text_lower),
         "ba": sum(1 for kw in BusinessAnalystRole().trigger_keywords if kw in text_lower),
         "pm": sum(1 for kw in ProductManagerRole().trigger_keywords if kw in text_lower),
         "architect": sum(1 for kw in ArchitectRole().trigger_keywords if kw in text_lower),
         "tdd": sum(1 for kw in TDDTesterRole().trigger_keywords if kw in text_lower),
     }
-    return max(scores, key=scores.get) if any(scores.values()) else "ba"
+    return max(scores, key=scores.get) if any(scores.values()) else "founder"
 
 
 async def stream_response(
@@ -204,13 +213,20 @@ async def stream_response(
     messages: list[dict],
     db: AsyncSession,
     role_tab: str = "ba",
+    feature_id: str | None = None,
 ) -> AsyncIterator[dict]:
-    knowledge_svc = KnowledgeService(db)
+    knowledge_svc = KnowledgeService(db, feature_id=feature_id)
     snapshot = await knowledge_svc.get_snapshot(project_id)
 
     full_context = None
-    if role_tab == "pm":
+    if role_tab == "founder":
+        full_context = await knowledge_svc.get_founder_context(project_id)
+    elif role_tab == "ba" and feature_id:
+        full_context = await knowledge_svc.get_ba_context(project_id)
+    elif role_tab == "pm":
         full_context = await knowledge_svc.get_pm_context(project_id)
+    elif role_tab == "architect" and feature_id:
+        full_context = await knowledge_svc.get_architect_context(project_id)
     elif role_tab == "tdd":
         full_context = await knowledge_svc.get_tdd_context(project_id)
     elif role_tab == "review":

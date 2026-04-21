@@ -1,0 +1,152 @@
+<div id="founder-panel" class="mb-5 space-y-4">
+    {% if legacy_founder_pending %}
+    <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 flex flex-wrap items-center gap-3">
+        <div class="text-sm text-amber-900">
+            <p class="font-semibold">Legacy project detected</p>
+            <p class="text-xs text-amber-800 mt-1">This project has downstream planning artifacts but no Founder records yet.</p>
+        </div>
+        <div class="ml-auto flex gap-2">
+            <form
+                hx-post="/projects/{{ project_id }}/founder/seed"
+                hx-target="#founder-panel"
+                hx-swap="outerHTML"
+            >
+                <button class="px-3 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-medium hover:bg-amber-700">
+                    Seed draft artifacts
+                </button>
+            </form>
+            <form
+                hx-post="/projects/{{ project_id }}/founder/manual"
+                hx-target="#founder-panel"
+                hx-swap="outerHTML"
+            >
+                <button class="px-3 py-1.5 rounded-lg border border-amber-300 text-amber-900 text-xs font-medium hover:bg-white">
+                    Start manually
+                </button>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
+        <section class="bg-white border border-gray-200 rounded-2xl p-4 space-y-3">
+            <div>
+                <p class="text-xs uppercase tracking-wide text-gray-400 font-semibold">Mission</p>
+                <h3 class="text-sm font-semibold text-gray-800 mt-1">Why this product exists</h3>
+            </div>
+            <form
+                class="space-y-3"
+                hx-patch="/projects/{{ project_id }}/founder/mission"
+                hx-target="#founder-panel"
+                hx-swap="outerHTML"
+            >
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">Statement</label>
+                    <textarea name="statement" rows="4" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm">{{ mission.statement if mission else '' }}</textarea>
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">Target users</label>
+                    <textarea name="target_users" rows="2" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm">{{ mission.target_users if mission else '' }}</textarea>
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">Problem</label>
+                    <textarea name="problem" rows="3" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm">{{ mission.problem if mission else '' }}</textarea>
+                </div>
+                <button class="px-3 py-2 rounded-xl bg-blue-600 text-white text-xs font-medium hover:bg-blue-700">
+                    Save mission
+                </button>
+            </form>
+        </section>
+
+        <section class="bg-white border border-gray-200 rounded-2xl p-4 space-y-3">
+            <div>
+                <p class="text-xs uppercase tracking-wide text-gray-400 font-semibold">Roadmap</p>
+                <h3 class="text-sm font-semibold text-gray-800 mt-1">Major outcomes in order</h3>
+            </div>
+
+            <div class="space-y-3 max-h-[32rem] overflow-y-auto pr-1">
+                {% for item in roadmap_items %}
+                <form
+                    class="space-y-2 rounded-xl border border-gray-200 bg-gray-50 p-3"
+                    hx-patch="/projects/{{ project_id }}/founder/roadmap-items/{{ item.id }}"
+                    hx-target="#founder-panel"
+                    hx-swap="outerHTML"
+                >
+                    <div class="grid grid-cols-[5rem,1fr] gap-2">
+                        <input name="ordinal" type="number" min="1" value="{{ item.ordinal }}" class="border border-gray-300 rounded-lg px-2 py-2 text-xs">
+                        <input name="title" value="{{ item.title }}" class="border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="Roadmap title">
+                    </div>
+                    <textarea name="description" rows="3" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="Describe the outcome">{{ item.description }}</textarea>
+                    <input name="linked_epic_id" value="{{ item.linked_epic_id or '' }}" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs" placeholder="Linked epic ID (optional)">
+                    <label class="flex items-center gap-2 text-xs text-gray-600">
+                        <input name="mvp" type="checkbox" {% if item.mvp %}checked{% endif %}>
+                        Mark as MVP
+                    </label>
+                    <button class="px-3 py-1.5 rounded-lg bg-white border border-gray-300 text-xs font-medium text-gray-700 hover:bg-gray-100">
+                        Save item
+                    </button>
+                </form>
+                {% endfor %}
+            </div>
+
+            <form
+                class="space-y-2 border-t border-gray-100 pt-3"
+                hx-post="/projects/{{ project_id }}/founder/roadmap-items"
+                hx-target="#founder-panel"
+                hx-swap="outerHTML"
+            >
+                <input name="title" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="Add roadmap item">
+                <textarea name="description" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="Outcome description"></textarea>
+                <div class="flex items-center gap-3">
+                    <input name="ordinal" type="number" min="1" class="w-20 border border-gray-300 rounded-lg px-3 py-2 text-xs" placeholder="Order">
+                    <label class="flex items-center gap-2 text-xs text-gray-600">
+                        <input name="mvp" type="checkbox">
+                        MVP
+                    </label>
+                </div>
+                <button class="px-3 py-2 rounded-xl bg-blue-600 text-white text-xs font-medium hover:bg-blue-700">
+                    Add roadmap item
+                </button>
+            </form>
+        </section>
+
+        <section class="bg-white border border-gray-200 rounded-2xl p-4 space-y-3">
+            <div>
+                <p class="text-xs uppercase tracking-wide text-gray-400 font-semibold">Tech Stack</p>
+                <h3 class="text-sm font-semibold text-gray-800 mt-1">Chosen layers and rationale</h3>
+            </div>
+
+            <div class="space-y-3 max-h-[32rem] overflow-y-auto pr-1">
+                {% for entry in tech_stack_entries %}
+                <form
+                    class="space-y-2 rounded-xl border border-gray-200 bg-gray-50 p-3"
+                    hx-patch="/projects/{{ project_id }}/founder/tech-stack-entries/{{ entry.id }}"
+                    hx-target="#founder-panel"
+                    hx-swap="outerHTML"
+                >
+                    <input name="layer" value="{{ entry.layer }}" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="Layer">
+                    <input name="choice" value="{{ entry.choice }}" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="Choice">
+                    <textarea name="rationale" rows="3" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="Why this choice fits">{{ entry.rationale }}</textarea>
+                    <button class="px-3 py-1.5 rounded-lg bg-white border border-gray-300 text-xs font-medium text-gray-700 hover:bg-gray-100">
+                        Save entry
+                    </button>
+                </form>
+                {% endfor %}
+            </div>
+
+            <form
+                class="space-y-2 border-t border-gray-100 pt-3"
+                hx-post="/projects/{{ project_id }}/founder/tech-stack-entries"
+                hx-target="#founder-panel"
+                hx-swap="outerHTML"
+            >
+                <input name="layer" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="Layer">
+                <input name="choice" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="Choice">
+                <textarea name="rationale" rows="3" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="Why this choice fits"></textarea>
+                <button class="px-3 py-2 rounded-xl bg-blue-600 text-white text-xs font-medium hover:bg-blue-700">
+                    Add tech choice
+                </button>
+            </form>
+        </section>
+    </div>
+</div>

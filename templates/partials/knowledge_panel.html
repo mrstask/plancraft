@@ -27,6 +27,18 @@
 <!-- Counters -->
 <div class="p-3 space-y-1 border-b border-gray-100">
     <div class="flex justify-between text-xs">
+        <span class="text-gray-500">🚀 Roadmap</span>
+        <span class="font-medium {% if snapshot.roadmap_item_count > 0 %}text-blue-600{% else %}text-gray-400{% endif %}">
+            {{ snapshot.roadmap_item_count }}
+        </span>
+    </div>
+    <div class="flex justify-between text-xs">
+        <span class="text-gray-500">🧱 Tech Stack</span>
+        <span class="font-medium {% if snapshot.tech_stack_count > 0 %}text-blue-600{% else %}text-gray-400{% endif %}">
+            {{ snapshot.tech_stack_count }}
+        </span>
+    </div>
+    <div class="flex justify-between text-xs">
         <span class="text-gray-500">📖 Stories</span>
         <span class="font-medium {% if snapshot.story_count > 0 %}text-blue-600{% else %}text-gray-400{% endif %}">
             {{ snapshot.story_count }}
@@ -57,6 +69,12 @@
         </span>
     </div>
     <div class="flex justify-between text-xs">
+        <span class="text-gray-500">🔌 Contracts</span>
+        <span class="font-medium {% if snapshot.contract_count > 0 %}text-blue-600{% else %}text-gray-400{% endif %}">
+            {{ snapshot.contract_count }}
+        </span>
+    </div>
+    <div class="flex justify-between text-xs">
         <span class="text-gray-500">✅ Test Specs</span>
         <span class="font-medium {% if snapshot.test_spec_count > 0 %}text-blue-600{% else %}text-gray-400{% endif %}">
             {{ snapshot.test_spec_count }}
@@ -68,13 +86,84 @@
             {{ snapshot.task_count }}
         </span>
     </div>
+    <div class="flex justify-between text-xs">
+        <span class="text-gray-500">👤 Personas</span>
+        <span class="font-medium {% if snapshot.persona_count > 0 %}text-blue-600{% else %}text-gray-400{% endif %}">
+            {{ snapshot.persona_count }}
+        </span>
+    </div>
+    <div class="flex justify-between text-xs">
+        <span class="text-gray-500">🔄 User Flows</span>
+        <span class="font-medium {% if snapshot.flow_count > 0 %}text-blue-600{% else %}text-gray-400{% endif %}">
+            {{ snapshot.flow_count }}
+        </span>
+    </div>
+    <div class="flex justify-between text-xs">
+        <span class="text-gray-500">📏 Business Rules</span>
+        <span class="font-medium {% if snapshot.business_rule_count > 0 %}text-blue-600{% else %}text-gray-400{% endif %}">
+            {{ snapshot.business_rule_count }}
+        </span>
+    </div>
+    <div class="flex justify-between text-xs">
+        <span class="text-gray-500">🗃️ Data Entities</span>
+        <span class="font-medium {% if snapshot.entity_count > 0 %}text-blue-600{% else %}text-gray-400{% endif %}">
+            {{ snapshot.entity_count }}
+        </span>
+    </div>
+    <div class="flex justify-between text-xs">
+        <span class="text-gray-500">⚙️ Func. Reqs</span>
+        <span class="font-medium {% if snapshot.fr_count > 0 %}text-blue-600{% else %}text-gray-400{% endif %}">
+            {{ snapshot.fr_count }}
+        </span>
+    </div>
 </div>
 
 <!-- Problem statement -->
+{% if snapshot.mission_statement %}
+<div class="p-3 border-b border-gray-100">
+    <p class="text-xs uppercase text-gray-400 font-semibold mb-1">Mission</p>
+    <p class="text-xs text-gray-600 leading-relaxed">{{ snapshot.mission_statement }}</p>
+    {% if snapshot.founder_evaluator_passed %}
+    <p class="text-xs text-green-600 font-medium mt-2">✓ Founder gate passed</p>
+    {% else %}
+    <p class="text-xs text-amber-600 font-medium mt-2">Founder gate still pending evaluator pass</p>
+    {% endif %}
+</div>
+{% endif %}
+
 {% if snapshot.problem_statement %}
 <div class="p-3 border-b border-gray-100">
     <p class="text-xs uppercase text-gray-400 font-semibold mb-1">Problem</p>
     <p class="text-xs text-gray-600 leading-relaxed">{{ snapshot.problem_statement }}</p>
+</div>
+{% endif %}
+
+{% if snapshot.recent_roadmap_items %}
+<div class="p-3 border-b border-gray-100">
+    <p class="text-xs uppercase text-gray-400 font-semibold mb-2">Roadmap</p>
+    <div class="space-y-2">
+        {% for item in snapshot.recent_roadmap_items %}
+        <div class="bg-gray-50 rounded-lg px-2 py-2 text-xs">
+            <p class="font-medium text-gray-800">
+                {% if item.mvp %}<span class="text-green-600">MVP · </span>{% endif %}{{ item.title }}
+            </p>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% if snapshot.recent_tech_stack_entries %}
+<div class="p-3 border-b border-gray-100">
+    <p class="text-xs uppercase text-gray-400 font-semibold mb-2">Tech Stack</p>
+    <div class="space-y-2">
+        {% for entry in snapshot.recent_tech_stack_entries %}
+        <div class="bg-gray-50 rounded-lg px-2 py-2 text-xs">
+            <p class="font-medium text-gray-800">{{ entry.layer }}</p>
+            <p class="text-gray-500 mt-0.5">{{ entry.choice }}</p>
+        </div>
+        {% endfor %}
+    </div>
 </div>
 {% endif %}
 
@@ -106,6 +195,59 @@
 </div>
 {% endif %}
 
+<!-- Vision & Scope indicator -->
+{% if snapshot.vision_scope_set %}
+<div class="p-3 border-b border-gray-100">
+    <p class="text-xs uppercase text-gray-400 font-semibold mb-1">Vision &amp; Scope</p>
+    <p class="text-xs text-green-600 font-medium">✓ Captured</p>
+</div>
+{% endif %}
+
+<!-- Clarification checklist -->
+{% if snapshot.pending_clarification_ids %}
+<div class="p-3 border-b border-gray-100">
+    <p class="text-xs uppercase text-gray-400 font-semibold mb-2">Clarifications Pending</p>
+    <div class="space-y-1">
+        {% for cid in snapshot.pending_clarification_ids %}
+        <div class="flex items-center gap-1.5 text-xs text-orange-600">
+            <span class="shrink-0">○</span>
+            <span>{{ cid }}</span>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Recent personas -->
+{% if snapshot.recent_personas %}
+<div class="p-3 border-b border-gray-100">
+    <p class="text-xs uppercase text-gray-400 font-semibold mb-2">Personas</p>
+    <div class="space-y-2">
+        {% for persona in snapshot.recent_personas %}
+        <div class="bg-gray-50 rounded-lg px-2 py-2 text-xs">
+            <p class="font-medium text-gray-800">{{ persona.name }}</p>
+            <p class="text-gray-500 mt-0.5">{{ persona.role }}</p>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Recent flows -->
+{% if snapshot.recent_flows %}
+<div class="p-3 border-b border-gray-100">
+    <p class="text-xs uppercase text-gray-400 font-semibold mb-2">User Flows</p>
+    <div class="space-y-2">
+        {% for flow in snapshot.recent_flows %}
+        <div class="bg-gray-50 rounded-lg px-2 py-2 text-xs">
+            <p class="font-medium text-gray-800">{{ flow.name }}</p>
+            <p class="text-gray-500 mt-0.5">{{ flow.step_count }} step{{ 's' if flow.step_count != 1 else '' }}</p>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
 <!-- Recent components -->
 {% if snapshot.recent_components %}
 <div class="p-3 border-b border-gray-100">
@@ -121,6 +263,47 @@
 </div>
 {% endif %}
 
+{% if snapshot.recent_contracts %}
+<div class="p-3 border-b border-gray-100">
+    <p class="text-xs uppercase text-gray-400 font-semibold mb-2">Contracts</p>
+    <div class="space-y-2">
+        {% for contract in snapshot.recent_contracts %}
+        <div class="bg-gray-50 rounded-lg px-2 py-2 text-xs">
+            <p class="font-medium text-gray-800">{{ contract.name }}</p>
+            <p class="text-gray-500 mt-0.5">{{ contract.kind }} · {{ contract.component_name }}</p>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Constitution link -->
+<div class="p-3 border-b border-gray-100">
+    <p class="text-xs uppercase text-gray-400 font-semibold mb-1">Constitution</p>
+    <button
+        hx-get="/projects/{{ project_id }}/constitution"
+        hx-target="#constitution-modal-body"
+        hx-swap="innerHTML"
+        hx-on::after-request="document.getElementById('constitution-modal').classList.remove('hidden')"
+        class="text-xs text-blue-600 hover:underline">
+        Edit rules &rarr;
+    </button>
+</div>
+
+<!-- Constitution modal (hidden by default) -->
+<div id="constitution-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div class="bg-white rounded-xl shadow-2xl w-[560px] max-h-[80vh] flex flex-col">
+        <div class="flex items-center justify-between px-4 py-3 border-b">
+            <span class="font-semibold text-gray-800 text-sm">Project Constitution</span>
+            <button onclick="document.getElementById('constitution-modal').classList.add('hidden')"
+                class="text-gray-400 hover:text-gray-600 text-lg leading-none">&times;</button>
+        </div>
+        <div id="constitution-modal-body" class="flex-1 overflow-auto p-4">
+            <p class="text-xs text-gray-400">Loading…</p>
+        </div>
+    </div>
+</div>
+
 <!-- Export buttons -->
 <div class="p-3 mt-auto space-y-1.5">
     <a href="/projects/{{ project_id }}/export/tasks"
@@ -130,5 +313,9 @@
     <a href="/projects/{{ project_id }}/export/arc42"
        class="block text-center text-xs bg-gray-100 hover:bg-gray-200 rounded-lg py-1.5 transition text-gray-600">
         📄 Export arc42
+    </a>
+    <a href="/projects/{{ project_id }}/export/ba"
+       class="block text-center text-xs bg-gray-100 hover:bg-gray-200 rounded-lg py-1.5 transition text-gray-600">
+        📋 Export BA Bundle
     </a>
 </div>

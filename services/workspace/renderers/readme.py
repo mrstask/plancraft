@@ -73,6 +73,21 @@ def render_readme(ws: "ProjectWorkspace", data: "Arc42ExportData") -> Path:
 
 ---
 
+## Product Planning
+
+- [Mission](product/mission.md)
+- [Roadmap](product/roadmap.md)
+- [Tech Stack](product/tech-stack.md)
+
+---
+
+## Features
+
+- [specs/](specs/)
+- Each feature folder may include `research.md`, `contracts/`, and feature-local `adrs/`
+
+---
+
 ## Architecture Decision Records
 
 | ID | Title |
@@ -102,6 +117,7 @@ def render_readme(ws: "ProjectWorkspace", data: "Arc42ExportData") -> Path:
 ---
 
 *This documentation is generated as code. All files are kept in sync with the planning database.*
+*Contracts are planning specs and are not synced from implementation code.*
 """
     path = ws.readme
     path.write_text(content, encoding="utf-8")

@@ -38,13 +38,44 @@ def _read_role_file(project_id: str, role: str, db) -> str | None:
 
 
 class PromptContextBuilder(KnowledgeBase):
-    def __init__(self, db):
-        super().__init__(db)
-        self.queries = ArtifactQueries(db)
+    def __init__(self, db, feature_id: str | None = None):
+        super().__init__(db, feature_id=feature_id)
+        self.queries = ArtifactQueries(db, feature_id=feature_id)
+
+    async def get_founder_context(self, project_id: str) -> str:
+        cached = _read_role_file(project_id, "founder", self.db) if self.feature_id is None else None
+        if cached is not None:
+            return cached
+        project = await self.get_project(project_id)
+        mission = await self.queries.get_project_mission(project_id)
+        roadmap_items = await self.queries.get_all_roadmap_items(project_id)
+        tech_entries = await self.queries.get_all_tech_stack_entries(project_id)
+
+        lines = [
+            f"Project: {project.name}",
+            f"Initial description: {project.description or '(none)'}",
+            "",
+            "## MISSION",
+            f"Statement: {mission.statement if mission else '(none)'}",
+            f"Target users: {mission.target_users if mission else '(none)'}",
+            f"Problem: {mission.problem if mission else '(none)'}",
+            "",
+            f"## ROADMAP ({len(roadmap_items)})",
+        ]
+        for item in roadmap_items:
+            lines.append(f"  {item.ordinal}. {item.title} [{'MVP' if item.mvp else 'later'}]")
+            lines.append(f"    {item.description}")
+
+        lines.append(f"\n## TECH STACK ({len(tech_entries)})")
+        for entry in tech_entries:
+            lines.append(f"  - {entry.layer}: {entry.choice}")
+            lines.append(f"    Why: {entry.rationale}")
+
+        return "\n".join(lines)
 
     async def get_pm_context(self, project_id: str) -> str:
         """Context for PM phase with full story IDs for prioritization and MVP selection."""
-        cached = _read_role_file(project_id, "pm", self.db)
+        cached = _read_role_file(project_id, "pm", self.db) if self.feature_id is None else None
         if cached is not None:
             return cached
         project = await self.get_project(project_id)
@@ -82,9 +113,75 @@ class PromptContextBuilder(KnowledgeBase):
 
         return "\n".join(lines)
 
+    async def get_ba_context(self, project_id: str) -> str:
+        project = await self.get_project(project_id)
+        clarifications = await self.queries.get_all_clarification_points(project_id)
+        lines = [
+            f"Project: {project.name}",
+            f"Problem: {project.description or '(none)'}",
+            "",
+        ]
+        if self.feature_id:
+            feature = await self.queries.get_feature(project_id, self.feature_id)
+            lines += [
+                f"## CURRENT FEATURE",
+                f"[{feature.id}] {feature.ordinal:03d}-{feature.slug}: {feature.title}" if feature else "(unknown feature)",
+                feature.description if feature and feature.description else "",
+                "",
+                "Capture stories only for this feature. Reuse project-wide mission, roadmap, personas, rules, and components as context.",
+                "",
+            ]
+
+        lines.append("## ROADMAP")
+        for item in await self.queries.get_all_roadmap_items(project_id):
+            lines.append(f"- {item.ordinal}. {item.title} [{'MVP' if item.mvp else 'later'}]")
+        stories = await self.queries.get_all_stories(project_id)
+        lines.append("")
+        lines.append(f"## CURRENT FEATURE STORIES ({len(stories)})")
+        for story in stories:
+            lines.append(f"- [{story.id}] As a {story.as_a}, I want {story.i_want}, so that {story.so_that}")
+        if clarifications:
+            lines += ["", f"## RESEARCH LOG ({len(clarifications)})"]
+            for item in clarifications:
+                lines.append(f"- {item.point_id} [{item.status}]")
+                if item.answer:
+                    lines.append(f"  {item.answer}")
+        return "\n".join(lines)
+
+    async def get_architect_context(self, project_id: str) -> str:
+        project = await self.get_project(project_id)
+        stories = await self.queries.get_all_stories(project_id)
+        components = await self.queries.get_all_components(project_id)
+        decisions = await self.queries.get_all_decisions(project_id)
+        contracts = await self.queries.get_all_interface_contracts(project_id)
+        lines = [f"Project: {project.name}", ""]
+        if self.feature_id:
+            feature = await self.queries.get_feature(project_id, self.feature_id)
+            if feature:
+                lines += [
+                    f"## CURRENT FEATURE",
+                    f"{feature.ordinal:03d}-{feature.slug}: {feature.title}",
+                    feature.description or "(no description)",
+                    "",
+                ]
+        lines += [f"## FEATURE STORIES ({len(stories)})"]
+        for story in stories:
+            lines.append(f"- [{story.id}] As a {story.as_a}, I want {story.i_want}")
+        lines += ["", f"## PROJECT COMPONENTS ({len(components)})"]
+        for component in components:
+            lines.append(f"- [{component.id}] {component.name}: {component.responsibility}")
+        lines += ["", f"## DECISIONS IN CONTEXT ({len(decisions)})"]
+        for decision in decisions:
+            lines.append(f"- [{decision.id}] {decision.title}: {decision.decision}")
+        lines += ["", f"## CONTRACTS ALREADY RECORDED ({len(contracts)})"]
+        for contract in contracts:
+            component_name = contract.component.name if contract.component else contract.component_id
+            lines.append(f"- [{contract.id}] {contract.name} ({contract.kind}) on {component_name}")
+        return "\n".join(lines)
+
     async def get_tdd_context(self, project_id: str) -> str:
         """Full context for the TDD phase: stories + components + existing specs/tasks."""
-        cached = _read_role_file(project_id, "tdd", self.db)
+        cached = _read_role_file(project_id, "tdd", self.db) if self.feature_id is None else None
         if cached is not None:
             return cached
         project = await self.get_project(project_id)
@@ -92,6 +189,7 @@ class PromptContextBuilder(KnowledgeBase):
         components = await self.queries.get_all_components(project_id)
         specs = await self.queries.get_all_test_specs(project_id)
         tasks = await self.queries.get_all_tasks(project_id)
+        contracts = await self.queries.get_all_interface_contracts(project_id)
 
         lines = [
             f"Project: {project.name}",
@@ -137,7 +235,7 @@ class PromptContextBuilder(KnowledgeBase):
 
     async def get_full_review_context(self, project_id: str) -> str:
         """Return a formatted string of all artifacts with IDs for the reviewer LLM."""
-        cached = _read_role_file(project_id, "review", self.db)
+        cached = _read_role_file(project_id, "review", self.db) if self.feature_id is None else None
         if cached is not None:
             return cached
         project = await self.get_project(project_id)
@@ -179,6 +277,15 @@ class PromptContextBuilder(KnowledgeBase):
             lines.append(f"    Decision: {d.decision}")
             if d.context:
                 lines.append(f"    Context: {d.context}")
+
+        lines += [f"\n### INTERFACE CONTRACTS ({len(contracts)})"]
+        for contract in contracts:
+            lines.append(f"  [{contract.id}]")
+            lines.append(f"    Name: {contract.name}")
+            lines.append(f"    Kind: {contract.kind}")
+            lines.append(
+                f"    Component: {contract.component.name if contract.component else contract.component_id}"
+            )
 
         lines += [f"\n### TEST SPECS ({len(specs)})"]
         for sp in specs:

@@ -1,0 +1,31 @@
+{
+  "name": "CLI Tool",
+  "description": "A reusable profile for command-line utilities, developer tooling, and local-first automation projects.",
+  "version": "1.0.0",
+  "constitution_md": "# Constitution\n\n## Quality rules\n- Commands should be predictable, scriptable, and safe by default.\n- Error messages must explain what failed and what the user can do next.\n- Prefer explicit flags and discoverable help text over implicit behavior.\n\n## Delivery rules\n- Keep startup time low and dependencies lean.\n- Separate command parsing from core business logic so workflows remain testable.\n",
+  "tech_stack_template": [
+    {
+      "layer": "runtime",
+      "choice": "Python",
+      "rationale": "Python keeps automation and integration work approachable while still supporting rich CLI ecosystems."
+    },
+    {
+      "layer": "cli-framework",
+      "choice": "Typer or argparse",
+      "rationale": "Both approaches are mature and make it easy to preserve ergonomic commands and built-in help."
+    },
+    {
+      "layer": "distribution",
+      "choice": "pipx-friendly package",
+      "rationale": "A simple packaging story makes the tool easier to install and reuse across machines."
+    }
+  ],
+  "conventions": {
+    "ux": {
+      "principle": "safe defaults with clear dry-run behavior where destructive actions exist"
+    },
+    "testing": {
+      "default": "cover command parsing and core workflows with lightweight integration tests"
+    }
+  }
+}

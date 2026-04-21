@@ -1,0 +1,20 @@
+version: "1.0.0"
+rules:
+  - id: reviewer.all_stories_have_ac
+    severity: block
+    text: "Every user story in the project must have at least one acceptance criterion."
+  - id: reviewer.all_components_referenced
+    severity: block
+    text: "Every component must be referenced by at least one user story or task."
+  - id: reviewer.test_spec_coverage
+    severity: block
+    text: "Every confirmed user story must have at least one Given/When/Then test spec."
+  - id: reviewer.no_duplicate_stories
+    severity: block
+    text: "No two stories should express identical intent."
+  - id: reviewer.tasks_have_descriptions
+    severity: warn
+    text: "Each task should have a non-empty description."
+  - id: reviewer.decisions_have_context
+    severity: warn
+    text: "Architecture decisions should include a context section explaining the problem."

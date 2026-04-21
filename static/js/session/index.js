@@ -6,6 +6,7 @@ import { addReviewChange, createReviewProgressCard, updateReviewStep } from './r
 // Names of tools the model sometimes writes as pseudo-function-calls in prose.
 // When the tokenizer leaks these, they look like `add_epic{...}` or `add_epic(...)`.
 const PSEUDO_TOOL_NAMES = [
+    'set_project_mission', 'add_roadmap_item', 'add_tech_stack_entry',
     'set_problem_statement', 'set_mvp_scope',
     'add_epic', 'add_user_story', 'update_user_story',
     'record_constraint', 'add_component', 'update_component',
@@ -43,6 +44,11 @@ function sanitizeAssistantText(raw) {
 
 const bootstrap = window.PLANNING_SESSION_BOOTSTRAP;
 const projectId = bootstrap.projectId;
+const featureId = bootstrap.featureId || null;
+
+function featureQueryString() {
+    return featureId ? `?feature_id=${encodeURIComponent(featureId)}` : '';
+}
 
 function registerPlanningSession() {
     if (!window.Alpine || window.__planningSessionRegistered) {
@@ -142,7 +148,9 @@ function registerPlanningSession() {
             const response = await fetch(`/projects/${projectId}/chat`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: `content=${encodeURIComponent(content)}&role_tab=${encodeURIComponent(this.activeTab)}`,
+                body:
+                    `content=${encodeURIComponent(content)}&role_tab=${encodeURIComponent(this.activeTab)}`
+                    + (featureId ? `&feature_id=${encodeURIComponent(featureId)}` : ''),
             });
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}`);
@@ -199,11 +207,11 @@ function registerPlanningSession() {
                     break;
                 case 'tool_used':
                     this.appendToolBadge(data.tool, data.result);
-                    htmx.ajax('GET', `/projects/${projectId}/knowledge-panel`, {
+                    htmx.ajax('GET', `/projects/${projectId}/knowledge-panel${featureQueryString()}`, {
                         target: '#knowledge-panel',
                         swap: 'innerHTML',
                     });
-                    htmx.ajax('GET', `/projects/${projectId}/doc-tree`, {
+                    htmx.ajax('GET', `/projects/${projectId}/doc-tree${featureQueryString()}`, {
                         target: '#doc-sidebar-content',
                         swap: 'innerHTML',
                     });
@@ -226,7 +234,7 @@ function registerPlanningSession() {
 
         async refreshPhaseStatus() {
             try {
-                const resp = await fetch(`/projects/${projectId}/phase-status`);
+                const resp = await fetch(`/projects/${projectId}/phase-status${featureQueryString()}`);
                 if (resp.ok) {
                     this.updatePhases(await resp.json());
                 }

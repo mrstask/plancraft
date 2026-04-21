@@ -7,7 +7,9 @@ from fastapi.staticfiles import StaticFiles
 
 from config import settings
 from database import init_db, migrate_db
-from routers import projects, chat, export, docs
+from database import AsyncSessionLocal
+from routers import projects, chat, export, docs, founder, traces, profiles, features
+from services.profiles import ProfileCommands
 
 logging.basicConfig(
     level=logging.INFO,
@@ -22,9 +24,13 @@ _log = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings.projects_root.mkdir(parents=True, exist_ok=True)
+    settings.profiles_root.mkdir(parents=True, exist_ok=True)
     _log.info("Projects root: %s", settings.projects_root)
+    _log.info("Profiles root: %s", settings.profiles_root)
     await init_db()
     await migrate_db()
+    async with AsyncSessionLocal() as db:
+        await ProfileCommands(db).ensure_starter_profiles()
     yield
 
 
@@ -36,6 +42,10 @@ app.include_router(projects.router)
 app.include_router(chat.router)
 app.include_router(export.router)
 app.include_router(docs.router)
+app.include_router(founder.router)
+app.include_router(traces.router)
+app.include_router(profiles.router)
+app.include_router(features.router)
 
 
 if __name__ == "__main__":

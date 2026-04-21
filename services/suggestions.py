@@ -8,6 +8,9 @@ from models.domain import KnowledgeSnapshot
 
 
 def get_suggestions(persona: str, snapshot: KnowledgeSnapshot) -> list[str]:
+    has_mission    = bool(snapshot.mission_statement)
+    has_roadmap    = snapshot.roadmap_item_count > 0
+    has_tech_stack = snapshot.tech_stack_count > 0
     has_problem    = bool(snapshot.problem_statement)
     has_mvp_scope  = snapshot.mvp_story_count > 0
     has_stories    = snapshot.story_count > 0
@@ -17,7 +20,15 @@ def get_suggestions(persona: str, snapshot: KnowledgeSnapshot) -> list[str]:
     has_tests      = snapshot.test_spec_count > 0
     has_tasks      = snapshot.task_count > 0
 
-    # ── Stage 0: nothing captured yet ──────────────────────────────────────
+    # ── Stage 0: founder framing not captured yet ─────────────────────────
+    if not has_mission or not has_roadmap or not has_tech_stack:
+        return [
+            "Who is this product for, and what outcome should it create?",
+            "What are the 2-3 biggest roadmap outcomes after launch?",
+            "What stack do you want to standardize on for v1?",
+        ]
+
+    # ── Stage 1: nothing captured yet beyond founder framing ──────────────
     if not has_problem and not has_stories:
         return [
             "Who are the users and what frustrates them?",
@@ -25,7 +36,7 @@ def get_suggestions(persona: str, snapshot: KnowledgeSnapshot) -> list[str]:
             "Give me one concrete example of how someone uses this",
         ]
 
-    # ── Stage 1: problem set, no stories yet ───────────────────────────────
+    # ── Stage 2: problem set, no stories yet ───────────────────────────────
     if has_problem and not has_stories:
         return [
             "Let's capture the first user story",
@@ -33,7 +44,7 @@ def get_suggestions(persona: str, snapshot: KnowledgeSnapshot) -> list[str]:
             "Are there different types of users with different needs?",
         ]
 
-    # ── Stage 2: stories exist, no architecture yet ────────────────────────
+    # ── Stage 3: stories exist, no architecture yet ────────────────────────
     if has_stories and not has_components:
         if not has_epics:
             return [
@@ -53,7 +64,7 @@ def get_suggestions(persona: str, snapshot: KnowledgeSnapshot) -> list[str]:
             "Should we revisit the MVP cut before architecture?",
         ]
 
-    # ── Stage 3: architecture started, no test specs ───────────────────────
+    # ── Stage 4: architecture started, no test specs ───────────────────────
     if has_components and not has_tests:
         if not has_decisions:
             return [
@@ -67,7 +78,7 @@ def get_suggestions(persona: str, snapshot: KnowledgeSnapshot) -> list[str]:
             "Define acceptance criteria for the top story",
         ]
 
-    # ── Stage 4: tests exist, no tasks yet ─────────────────────────────────
+    # ── Stage 5: tests exist, no tasks yet ─────────────────────────────────
     if has_tests and not has_tasks:
         return [
             "Break this into independent implementation tasks",
@@ -75,7 +86,7 @@ def get_suggestions(persona: str, snapshot: KnowledgeSnapshot) -> list[str]:
             "Generate the full task list for the dev team",
         ]
 
-    # ── Stage 5: full model — offer refinement or export ───────────────────
+    # ── Stage 6: full model — offer refinement or export ───────────────────
     suggestions = []
     if snapshot.story_count < 5:
         suggestions.append("Add more user stories")

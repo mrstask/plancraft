@@ -1,0 +1,13 @@
+# BA role rubric — expanded in M1 when the Reviewer evaluator lands and
+# M4 when feature-scoped BA evaluator is introduced.
+version: "0.1.0"
+rules:
+  - id: ba.problem_statement_set
+    severity: block
+    text: "Problem statement must be non-empty after BA turn that produced stories."
+  - id: ba.stories_have_ac
+    severity: block
+    text: "Every user story must have at least one acceptance criterion."
+  - id: ba.stories_role_driven
+    severity: warn
+    text: "Stories should follow 'As a X, I want Y so that Z' shape."

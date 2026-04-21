@@ -1,0 +1,11 @@
+version: "0.1.0"
+rules:
+  - id: architect.components_defined
+    severity: block
+    text: "Architect output must define at least one component."
+  - id: architect.components_cover_epics
+    severity: warn
+    text: "Each epic should be served by at least one component."
+  - id: architect.decisions_recorded
+    severity: warn
+    text: "Architect should record at least one ADR when components are added."

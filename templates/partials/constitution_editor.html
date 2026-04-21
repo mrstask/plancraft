@@ -1,0 +1,29 @@
+<!-- Constitution editor — loaded into the modal via HTMX -->
+<form
+    hx-put="/projects/{{ project_id }}/constitution"
+    hx-encoding="application/x-www-form-urlencoded"
+    hx-on::after-request="document.getElementById('constitution-modal').classList.add('hidden')"
+    class="flex flex-col gap-3">
+    <p class="text-xs text-gray-500 leading-relaxed">
+        Write one rule per bullet line under <code class="bg-gray-100 px-1 rounded">## Section</code> headings.
+        Rules containing the word <strong>must</strong> are treated as blocking (reviewer will retry if violated).
+    </p>
+    <textarea
+        name="constitution_md"
+        rows="18"
+        class="w-full font-mono text-xs border border-gray-200 rounded-lg p-2 resize-y focus:outline-none focus:ring-2 focus:ring-blue-300"
+        spellcheck="false">{{ constitution_md }}</textarea>
+    <div class="flex justify-end gap-2">
+        <button
+            type="button"
+            onclick="document.getElementById('constitution-modal').classList.add('hidden')"
+            class="px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50">
+            Cancel
+        </button>
+        <button
+            type="submit"
+            class="px-3 py-1.5 text-xs rounded-lg bg-blue-600 text-white hover:bg-blue-700">
+            Save constitution
+        </button>
+    </div>
+</form>
