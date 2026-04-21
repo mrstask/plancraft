@@ -298,6 +298,19 @@ async def migrate_db():
                 "CREATE INDEX IF NOT EXISTS idx_contracts_feature ON interface_contracts(feature_id)",
             ],
         ),
+        (
+            "20260421_add_ba_structured_fields",
+            [
+                "ALTER TABLE projects ADD COLUMN business_goals JSON",
+                "ALTER TABLE projects ADD COLUMN success_metrics JSON",
+                "ALTER TABLE projects ADD COLUMN in_scope JSON",
+                "ALTER TABLE projects ADD COLUMN out_of_scope JSON",
+                "ALTER TABLE projects ADD COLUMN target_users JSON",
+                "ALTER TABLE projects ADD COLUMN terminology JSON",
+                "ALTER TABLE projects ADD COLUMN llm_interaction_model JSON",
+                "ALTER TABLE messages ADD COLUMN active_persona VARCHAR",
+            ],
+        ),
     ]
 
     async with engine.begin() as conn:
