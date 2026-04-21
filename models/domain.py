@@ -462,6 +462,20 @@ class AnswerClarificationPointArgs(BaseModel):
     answer: str = Field(description="Canonical answer captured from the conversation")
     status: Literal["answered", "skipped"] = "answered"
 
+    @field_validator("status", mode="before")
+    @classmethod
+    def _normalize_status(cls, v):
+        # LLMs sometimes emit variants like "answered_partial", "partial", "complete".
+        # Collapse any "answered*" or similar variant to "answered"; only an explicit
+        # "skip"/"skipped" counts as skipped. Anything else falls back to "answered"
+        # so a minor schema drift doesn't fail the whole tool call.
+        if not isinstance(v, str):
+            return v
+        normalized = v.strip().lower()
+        if normalized in {"skipped", "skip"}:
+            return "skipped"
+        return "answered"
+
 
 class DeleteStoryArgs(BaseModel):
     story_id: str

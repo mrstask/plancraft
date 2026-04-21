@@ -133,6 +133,26 @@ async def render_workspace(project_id: str, db: AsyncSession) -> None:
         log.exception("Workspace render failed for project %s", project_id)
 
 
-def schedule_render(project_id: str, db: AsyncSession) -> None:
-    """Schedule a background render without blocking the caller."""
-    asyncio.ensure_future(render_workspace(project_id, db))
+async def _render_with_own_session(project_id: str) -> None:
+    """Open a fresh DB session for a background render.
+
+    The request-scoped session is closed as soon as the HTTP handler returns,
+    so a fire-and-forget render must open its own session instead of borrowing
+    the caller's.
+    """
+    from database import AsyncSessionLocal  # local import to avoid import cycles
+    try:
+        async with AsyncSessionLocal() as session:
+            await render_workspace(project_id, session)
+    except Exception:
+        log.exception("Background workspace render failed for project %s", project_id)
+
+
+def schedule_render(project_id: str, db: AsyncSession | None = None) -> None:
+    """Schedule a background render without blocking the caller.
+
+    `db` is accepted for backwards-compat but intentionally ignored — the
+    background task always opens its own session because the caller's session
+    is closed when the request handler returns.
+    """
+    asyncio.ensure_future(_render_with_own_session(project_id))
