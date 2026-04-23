@@ -103,7 +103,7 @@ async def extraction_pass(
     # Always use the tool-calling-optimized model for extraction. The lighter
     # ollama_model tends to emit pseudo-call syntax in prose instead of firing
     # the real tool_calls API, which is exactly the failure mode this pass exists to recover from.
-    extraction_model = settings.tdd_model
+    extraction_model = settings.ollama_model
     try:
         resp = await client.chat.completions.create(
             model=extraction_model,
@@ -168,7 +168,7 @@ async def _propose_tasks_pass(
 
     try:
         resp = await client.chat.completions.create(
-            model=settings.tdd_model,
+            model=settings.ollama_model,
             max_tokens=settings.max_tokens,
             messages=(
                 [{"role": "system", "content": system_msg}]
@@ -208,13 +208,17 @@ def detect_persona(text: str) -> str:
     return max(scores, key=scores.get) if any(scores.values()) else "founder"
 
 
-async def stream_response(
+async def build_system_prompt_for(
     project_id: str,
-    messages: list[dict],
     db: AsyncSession,
     role_tab: str = "ba",
     feature_id: str | None = None,
-) -> AsyncIterator[dict]:
+) -> str:
+    """Assemble the exact system prompt that stream_response would send.
+
+    Extracted so the context-usage endpoint can count tokens without invoking
+    the model. Kept in sync with stream_response's prep block.
+    """
     knowledge_svc = KnowledgeService(db, feature_id=feature_id)
     snapshot = await knowledge_svc.get_snapshot(project_id)
 
@@ -232,7 +236,18 @@ async def stream_response(
     elif role_tab == "review":
         full_context = await knowledge_svc.get_full_review_context(project_id)
 
-    system_prompt = build_system_prompt(snapshot, role_tab, full_context=full_context)
+    return build_system_prompt(snapshot, role_tab, full_context=full_context)
+
+
+async def stream_response(
+    project_id: str,
+    messages: list[dict],
+    db: AsyncSession,
+    role_tab: str = "ba",
+    feature_id: str | None = None,
+) -> AsyncIterator[dict]:
+    knowledge_svc = KnowledgeService(db, feature_id=feature_id)
+    system_prompt = await build_system_prompt_for(project_id, db, role_tab, feature_id)
 
     full_text_parts: list[str] = []
     pending_tool_calls: dict[int, dict] = {}
@@ -288,7 +303,7 @@ async def stream_response(
                     full_text_parts.append(safe)
                     yield {"type": "text", "content": safe}
 
-    model_name = settings.tdd_model if role_tab in ("tdd", "review") else settings.ollama_model
+    model_name = settings.ollama_model
     tool_choice = "required" if role_tab in ("tdd", "review") else "auto"
     stream = await client.chat.completions.create(
         model=model_name,

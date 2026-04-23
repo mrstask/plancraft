@@ -168,6 +168,8 @@ class Message(Base):
     active_persona = Column(String, nullable=True)  # 'founder' | 'ba' | 'pm' | 'architect' | 'tdd'
     role_tab = Column(String, nullable=True, default="founder")  # which phase tab this message belongs to
     feature_id = Column(String, ForeignKey("features.id", ondelete="CASCADE"), nullable=True)
+    archived = Column(Boolean, nullable=False, default=False)
+    kind = Column(String, nullable=True)  # 'summary' when produced by /compact
     created_at = Column(DateTime, default=_now)
 
     project = relationship("Project", back_populates="messages")

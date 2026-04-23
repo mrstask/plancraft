@@ -242,6 +242,7 @@ class PromptContextBuilder(KnowledgeBase):
         stories = await self.queries.get_all_stories(project_id)
         components = await self.queries.get_all_components(project_id)
         decisions = await self.queries.get_all_decisions(project_id)
+        contracts = await self.queries.get_all_interface_contracts(project_id)
         specs = await self.queries.get_all_test_specs(project_id)
         tasks = await self.queries.get_all_tasks(project_id)
 

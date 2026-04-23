@@ -281,6 +281,7 @@ class ArtifactQueries(KnowledgeBase):
     async def get_all_functional_requirements(self, project_id: str):
         r = await self.db.execute(
             select(FunctionalRequirement)
+            .options(selectinload(FunctionalRequirement.story_links))
             .where(FunctionalRequirement.project_id == project_id)
             .order_by(FunctionalRequirement.created_at)
         )

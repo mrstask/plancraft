@@ -1,6 +1,7 @@
 """Write-side commands for knowledge artifacts."""
 from __future__ import annotations
 
+import re
 from sqlalchemy import or_, select
 from sqlalchemy.orm import selectinload
 
@@ -478,9 +479,21 @@ class ArtifactCommands(KnowledgeBase):
         return f"Decision recorded: {decision.id}"
 
     async def add_interface_contract(self, project_id: str, args: AddInterfaceContractArgs) -> str:
+        component_id = args.component_id
+        if not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", component_id, re.I):
+            row = (await self.db.execute(
+                select(Component).where(
+                    Component.project_id == project_id,
+                    Component.name.ilike(component_id),
+                )
+            )).scalar_one_or_none()
+            if row is None:
+                return f"Error: component '{component_id}' not found — create it first with add_component()"
+            component_id = row.id
+
         stmt = select(InterfaceContract).where(
             InterfaceContract.project_id == project_id,
-            InterfaceContract.component_id == args.component_id,
+            InterfaceContract.component_id == component_id,
             InterfaceContract.kind == args.kind,
             InterfaceContract.name.ilike(args.name),
         )
@@ -497,7 +510,7 @@ class ArtifactCommands(KnowledgeBase):
         contract = InterfaceContract(
             project_id=project_id,
             feature_id=self.feature_id,
-            component_id=args.component_id,
+            component_id=component_id,
             kind=args.kind,
             name=args.name,
             body_md=args.body_md,

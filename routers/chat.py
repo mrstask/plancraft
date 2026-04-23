@@ -12,7 +12,10 @@ from database import get_db, AsyncSessionLocal
 from models.db import Message
 from models.domain import compute_feature_phase_status, compute_phase_status
 from services.llm import build_actor_output, record_single_turn, stream_response
+from services.llm.compact import compact_dialog
 from services.llm.evaluators import get_evaluator
+from services.llm.streaming import build_system_prompt_for
+from services.llm.tokens import count_messages, count_tokens
 from services.knowledge import KnowledgeService
 from services.suggestions import get_suggestions
 from services.review_orchestrator import run_full_review
@@ -42,10 +45,16 @@ async def send_message(
     db.add(user_msg)
     await db.commit()
 
-    # Build message history for this tab only (each tab has its own context)
+    # Build message history for this tab only (each tab has its own context).
+    # Archived messages (compacted away) are excluded; the summary message
+    # that replaced them remains visible and feeds back into the prompt.
     history_stmt = (
         select(Message)
-        .where(Message.project_id == project_id, Message.role_tab == role_tab)
+        .where(
+            Message.project_id == project_id,
+            Message.role_tab == role_tab,
+            Message.archived == False,  # noqa: E712
+        )
         .order_by(Message.created_at.asc())
     )
     if feature_id is None:
@@ -197,6 +206,73 @@ async def full_review(project_id: str):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@router.get("/projects/{project_id}/chat/context-usage")
+async def context_usage(
+    project_id: str,
+    role_tab: str = "founder",
+    feature_id: str | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Return an estimate of how full the LLM context is for this dialog.
+
+    Counts system-prompt tokens + the history slice that would actually be
+    sent to the model on the next turn.
+    """
+    system_prompt = await build_system_prompt_for(project_id, db, role_tab, feature_id)
+
+    history_stmt = (
+        select(Message)
+        .where(
+            Message.project_id == project_id,
+            Message.role_tab == role_tab,
+            Message.archived == False,  # noqa: E712
+        )
+        .order_by(Message.created_at.asc())
+    )
+    if feature_id is None:
+        history_stmt = history_stmt.where(Message.feature_id.is_(None))
+    else:
+        history_stmt = history_stmt.where(Message.feature_id == feature_id)
+    result = await db.execute(history_stmt)
+    all_msgs = result.scalars().all()
+    history = [{"role": m.role, "content": m.content} for m in all_msgs][-settings.max_history_messages:]
+
+    system_tokens = count_tokens(system_prompt) + 4  # system message overhead
+    history_tokens = count_messages(history)
+    total = system_tokens + history_tokens
+    window = max(1, settings.context_window)
+    pct = round(100 * total / window, 1)
+
+    return JSONResponse({
+        "system_tokens": system_tokens,
+        "history_tokens": history_tokens,
+        "total_tokens": total,
+        "window": window,
+        "pct": pct,
+        "message_count": len(history),
+        "total_message_count": len(all_msgs),
+    })
+
+
+@router.post("/projects/{project_id}/chat/compact")
+async def compact(
+    project_id: str,
+    role_tab: str = Form(default="founder"),
+    feature_id: str | None = Form(default=None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Compact (summarize) the current dialog for this role/feature.
+
+    Archives old messages and inserts a single summary message in their place.
+    """
+    try:
+        result = await compact_dialog(db, project_id, role_tab, feature_id)
+    except Exception as exc:
+        log.error("Compact failed: %s", exc, exc_info=True)
+        return JSONResponse({"error": str(exc)}, status_code=500)
+    return JSONResponse(result)
 
 
 @router.get("/projects/{project_id}/knowledge-panel", response_class=HTMLResponse)

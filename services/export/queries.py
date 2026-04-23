@@ -183,6 +183,7 @@ class ExportDataLoader(KnowledgeBase):
         )
         stories = await self.db.execute(
             select(UserStory)
+            .options(selectinload(UserStory.acceptance_criteria))
             .where(UserStory.project_id == project_id)
             .where(UserStory.feature_id == scoped_feature_id if scoped_feature_id is not None else True)
             .order_by(UserStory.created_at)

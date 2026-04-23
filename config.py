@@ -16,13 +16,16 @@ class Settings(BaseSettings):
 
     # Ollama settings
     ollama_base_url: str = "http://localhost:11434/v1"
-    ollama_model: str = "gemma4:latest"
-    # Larger model used for TDD phase — needs stronger tool-calling ability
-    tdd_model: str = "gemma4:31b"
+    ollama_model: str = "gemma4:31b"
 
     # Conversation limits
     max_history_messages: int = 50
     max_tokens: int = 4096
+    # Model context window size (tokens). Used for the context-usage indicator
+    # and to decide when to suggest /compact. Approximate for Ollama models.
+    context_window: int = 131072
+    # Keep this many most-recent messages untouched when /compact runs.
+    compact_keep_tail: int = 4
 
     # Root directory where per-project workspace folders are created
     projects_root: Path = Path("./projects")
@@ -35,7 +38,7 @@ class Settings(BaseSettings):
     evaluator_max_iterations: int = 3
     evaluator_score_threshold: float = 0.8
     evaluator_escalate_after: int = 2
-    evaluator_model: str = "gemma4:latest"
+    evaluator_model: str = "gemma4:31b"
     trace_retention_days: int = 30
 
     class Config:

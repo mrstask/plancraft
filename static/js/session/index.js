@@ -58,9 +58,15 @@ function registerPlanningSession() {
     window.Alpine.data('planningSession', () => ({
         activeTab: bootstrap.initialTab,
         sending: false,
+        compacting: false,
         phases: bootstrap.phases,
         unlockedBanner: null,
         _bannerTimer: null,
+        contextUsage: null,
+
+        init() {
+            this.refreshContextUsage();
+        },
 
         get quickActions() {
             return QUICK_ACTIONS[this.activeTab] || [];
@@ -69,6 +75,53 @@ function registerPlanningSession() {
         switchTab(key) {
             this.activeTab = key;
             this.$nextTick(() => scrollToBottom());
+            this.refreshContextUsage();
+        },
+
+        async refreshContextUsage() {
+            try {
+                const url = `/projects/${projectId}/chat/context-usage?role_tab=${encodeURIComponent(this.activeTab)}`
+                    + (featureId ? `&feature_id=${encodeURIComponent(featureId)}` : '');
+                const resp = await fetch(url);
+                if (resp.ok) {
+                    this.contextUsage = await resp.json();
+                }
+            } catch {
+                // non-critical
+            }
+        },
+
+        async runCompact() {
+            if (this.sending || this.compacting) return;
+            if (!confirm('Compact older messages in this dialog? Old messages will be archived and replaced by a single summary.')) return;
+            this.compacting = true;
+            try {
+                const body = `role_tab=${encodeURIComponent(this.activeTab)}`
+                    + (featureId ? `&feature_id=${encodeURIComponent(featureId)}` : '');
+                const resp = await fetch(`/projects/${projectId}/chat/compact`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body,
+                });
+                const data = await resp.json();
+                if (!resp.ok) {
+                    appendMessageToTab('assistant', `⚠️ Compact failed: ${data.error || resp.status}`, this.activeTab);
+                    return;
+                }
+                if (data.archived === 0) {
+                    appendMessageToTab('assistant', data.message || 'Dialog already short — nothing to compact.', this.activeTab);
+                } else {
+                    // Reload so the archived messages disappear and the summary
+                    // shows up rendered the same as any other assistant message.
+                    window.location.reload();
+                    return;
+                }
+            } catch (err) {
+                appendMessageToTab('assistant', `⚠️ Compact error: ${err.message}`, this.activeTab);
+            } finally {
+                this.compacting = false;
+                this.refreshContextUsage();
+            }
         },
 
         updatePhases(newPhases) {
@@ -101,6 +154,22 @@ function registerPlanningSession() {
 
             if (content === '__FULL_REVIEW__') {
                 await this.triggerFullReview();
+                return;
+            }
+
+            // Slash-command handling. Intercept before sending to the LLM.
+            if (content.startsWith('/')) {
+                const cmd = content.split(/\s+/)[0].toLowerCase();
+                if (cmd === '/compact') {
+                    const input = document.getElementById('message-input');
+                    if (!preset) { input.value = ''; input.style.height = 'auto'; }
+                    await this.runCompact();
+                    return;
+                }
+                // Unknown slash command — show inline hint, do not send.
+                appendMessageToTab('assistant', `Unknown command \`${cmd}\`. Available: \`/compact\`.`, this.activeTab);
+                const input = document.getElementById('message-input');
+                if (!preset) { input.value = ''; input.style.height = 'auto'; }
                 return;
             }
 
@@ -225,6 +294,7 @@ function registerPlanningSession() {
                     if (data.suggestions?.length) {
                         this.showSuggestions(data.suggestions);
                     }
+                    this.refreshContextUsage();
                     break;
                 case 'error':
                     appendMessageToTab('assistant', `⚠️ ${data.message || 'Unknown error'}`, this.activeTab);

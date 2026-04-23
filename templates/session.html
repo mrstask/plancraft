@@ -208,7 +208,7 @@
 
         <!-- Quick actions bar -->
         <div class="border-t border-gray-100 bg-gray-50 px-5 py-2 shrink-0 overflow-x-auto">
-            <div class="flex gap-1.5 min-w-max">
+            <div class="flex items-center gap-1.5 min-w-max">
                 <template x-for="action in quickActions" :key="action.label">
                     <button
                         @click="submitMessage(action.prompt)"
@@ -219,6 +219,38 @@
                         <span x-text="action.label"></span>
                     </button>
                 </template>
+
+                <!-- Spacer pushes context controls to the right -->
+                <div class="flex-1"></div>
+
+                <!-- Context usage indicator -->
+                <div
+                    x-show="contextUsage"
+                    :title="contextUsage ? `System ${contextUsage.system_tokens} + history ${contextUsage.history_tokens} tok across ${contextUsage.message_count} msgs` : ''"
+                    :class="{
+                        'text-gray-600 border-gray-200 bg-white': contextUsage && contextUsage.pct < 60,
+                        'text-amber-700 border-amber-300 bg-amber-50': contextUsage && contextUsage.pct >= 60 && contextUsage.pct < 85,
+                        'text-red-700 border-red-300 bg-red-50': contextUsage && contextUsage.pct >= 85,
+                    }"
+                    class="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md border whitespace-nowrap shrink-0 font-mono"
+                >
+                    <span>ctx</span>
+                    <span x-text="contextUsage ? contextUsage.total_tokens.toLocaleString() : ''"></span>
+                    <span class="text-gray-400">/</span>
+                    <span x-text="contextUsage ? contextUsage.window.toLocaleString() : ''"></span>
+                    <span x-text="contextUsage ? '(' + contextUsage.pct + '%)' : ''" class="text-gray-500"></span>
+                </div>
+
+                <!-- Compact button -->
+                <button
+                    @click="runCompact()"
+                    :disabled="sending || compacting"
+                    title="Summarize older messages in this dialog to free context (/compact)"
+                    class="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md border border-gray-200 bg-white text-gray-600 hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-700 disabled:opacity-40 transition-colors whitespace-nowrap shrink-0"
+                >
+                    <span class="text-sm leading-none">🗜️</span>
+                    <span x-text="compacting ? 'Compacting…' : 'Compact'"></span>
+                </button>
             </div>
         </div>
 

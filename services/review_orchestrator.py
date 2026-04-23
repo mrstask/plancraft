@@ -205,7 +205,7 @@ async def _run_pass(
 
     try:
         resp = await _client.chat.completions.create(
-            model=settings.tdd_model,
+            model=settings.ollama_model,
             max_tokens=2048,
             messages=messages,
             tools=get_phase_tools("review"),

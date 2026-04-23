@@ -299,6 +299,13 @@ async def migrate_db():
             ],
         ),
         (
+            "20260422_add_message_archive",
+            [
+                "ALTER TABLE messages ADD COLUMN archived BOOLEAN NOT NULL DEFAULT 0",
+                "ALTER TABLE messages ADD COLUMN kind VARCHAR",
+            ],
+        ),
+        (
             "20260421_add_ba_structured_fields",
             [
                 "ALTER TABLE projects ADD COLUMN business_goals JSON",

@@ -64,7 +64,11 @@ async def project_session(
 
     msg_result = await db.execute(
         select(Message)
-        .where(Message.project_id == project_id, Message.feature_id.is_(None))
+        .where(
+            Message.project_id == project_id,
+            Message.feature_id.is_(None),
+            Message.archived == False,  # noqa: E712
+        )
         .order_by(Message.created_at.asc())
     )
     all_messages = msg_result.scalars().all()
