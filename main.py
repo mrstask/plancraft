@@ -9,6 +9,7 @@ from config import settings
 from database import init_db, migrate_db
 from database import AsyncSessionLocal
 from routers import projects, chat, export, docs, founder, traces, profiles, features
+from routers import scaffold as scaffold_router
 from services.profiles import ProfileCommands
 
 logging.basicConfig(
@@ -46,6 +47,7 @@ app.include_router(founder.router)
 app.include_router(traces.router)
 app.include_router(profiles.router)
 app.include_router(features.router)
+app.include_router(scaffold_router.router)
 
 
 if __name__ == "__main__":

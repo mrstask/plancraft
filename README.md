@@ -23,7 +23,9 @@ You describe your idea. Plancraft's AI roles extract everything needed to build 
         ↓
 🔎 Reviewer          →  deduplication, polish, cross-category consistency
         ↓
-📦 Export            →  workspace zip  +  task DAG JSON  +  arc42 Markdown  +  spec-kit / Agent-OS / OpenSpec bundles
+🏗  Scaffolder        →  implementation-ready code skeleton (impl/) — backend stubs, pytest files, optional Vite+React frontend
+        ↓
+📦 Export            →  workspace zip  +  task DAG JSON  +  arc42 Markdown  +  impl/ skeleton  +  spec-kit / Agent-OS / OpenSpec bundles
 ```
 
 Each role executes inside an evaluator loop (ReAct): the actor produces an artifact, a rubric-driven evaluator scores it, and the loop retries up to `EVALUATOR_MAX_ITERATIONS` before escalating to the user with the critique shown. Traces are persisted per phase for inspection.
@@ -40,7 +42,8 @@ The exported task DAG is directly consumable by autonomous agent systems (e.g. [
 - **Profiles (cross-project reusables)** — named profiles bundle constitution + tech-stack template + conventions. Projects can inherit from a profile at creation and save a profile from an existing project. Stored under `~/.plancraft/profiles` (path configurable via `PROFILES_ROOT`).
 - **Multi-feature projects** — the Feature entity scopes stories, ADRs, test specs, tasks, clarifications, contracts, and research to a specific feature. Legacy single-feature projects are backfilled into a synthetic "initial" feature (behind `FEATURE_SCOPING_ENABLED`, defaults to `false`; dry-run and transactional).
 - **Interface contracts + per-feature research** — architects capture API/event/schema contracts as `specs/NNN-slug/contracts/<kind>-<name>.md` and per-feature research/clarifications as `specs/NNN-slug/research.md`. Feature-local ADRs live in `specs/NNN-slug/adrs/`; cross-cutting ADRs remain in `architecture/adrs/`.
-- **Pluggable exporter framework (M6)** — export targets are registered through a common `ExportTarget` contract with structural validators. Ships with `workspace`, `arc42`, `tasks`, and `ba` targets; spec-kit / Agent-OS / OpenSpec targets can be added by implementing the contract (framework ready, bundled targets pending).
+- **Pluggable exporter framework (M6)** — export targets are registered through a common `ExportTarget` contract with structural validators. Ships with `workspace`, `arc42`, `tasks`, `ba`, and `impl` targets; spec-kit / Agent-OS / OpenSpec targets can be added by implementing the contract (framework ready, bundled targets pending).
+- **Scaffolder phase (M7)** — generates an implementation-ready code skeleton under `impl/`. Two-layer generation: a deterministic layer scaffolds the directory tree + static templates (bootstrap.sh, pyproject.toml, requirements.txt, conftest.py, optional Vite+React frontend); an LLM layer generates Python module stubs and pytest test files from components, contracts, tasks, and test specs. Method bodies are `raise NotImplementedError("TODO: TASK-NNN")` so tests fail by construction and a downstream dev team can fill them in.
 - **Phase-gated flow** — each tab unlocks only when the previous phase produces real artifacts, keeping the conversation focused
 - **Explicit MVP persistence** — the PM phase now saves the MVP cut and rationale, and architecture stays locked until both epics and MVP scope exist
 - **Structured knowledge base** — every insight is persisted as a typed record (stories, epics, components, ADRs, test specs, tasks) with full SQLite backing
@@ -158,7 +161,8 @@ plancraft/
 │   ├── product_manager.py
 │   ├── architect.py
 │   ├── tdd_tester.py
-│   └── reviewer.py
+│   ├── reviewer.py
+│   └── scaffolder.py
 │
 ├── services/
 │   ├── knowledge/           # Knowledge-model read/write/context services
@@ -177,6 +181,11 @@ plancraft/
 │   │   └── rubrics/         # Role-specific evaluation rubrics
 │   ├── features/            # Feature entity service (M4 — multi-feature projects)
 │   ├── profiles/            # Profile service (M3 — cross-project reusables)
+│   ├── scaffold/            # Scaffolder package (M7)
+│   │   ├── tree_builder.py  # Deterministic directory tree + static templates
+│   │   ├── llm.py           # LLM-driven module/test stub generator
+│   │   ├── rubric.py        # Scaffolder evaluator rubric
+│   │   └── tech_stack_reader.py  # Reads tech-stack to drive backend/frontend toggles
 │   ├── export/
 │   │   ├── queries.py       # Export-specific read models
 │   │   ├── targets/         # Pluggable exporters: spec-kit, Agent-OS, OpenSpec
@@ -212,6 +221,7 @@ plancraft/
 │   ├── traces.py            # Evaluator trace inspection
 │   ├── chat.py              # SSE chat + full review endpoint (triggers schedule_render per turn)
 │   ├── docs.py              # Document tree sidebar
+│   ├── scaffold.py          # POST /projects/{id}/scaffold (deterministic tree + LLM stubs)
 │   └── export.py            # Download endpoints (workspace zip, task JSON, arc42 md, pluggable targets)
 │
 ├── static/
@@ -229,7 +239,9 @@ tests/
 ├── test_phase_status.py      # Phase gating rules
 ├── test_tool_registry.py     # Tool availability by phase
 ├── test_knowledge_service.py # MVP persistence + scoped reads + AC updates
-└── test_workspace.py         # Workspace scaffold, renderers, and path helpers
+├── test_workspace.py         # Workspace scaffold, renderers, and path helpers
+├── test_scaffold_tree.py     # Deterministic scaffold tree + idempotency / force flag
+└── test_scaffold_llm.py      # Scaffolder LLM tool dispatch + rubric scoring
 ```
 
 ---
@@ -283,7 +295,21 @@ The C4 renderer emits a `workspace.dsl` consumable by the [Structurizr CLI](http
 - **Product Manager** completes when the project has at least one epic and a saved MVP scope.
 - **Architect** completes when the active feature has at least one component, one architecture decision, and the required contracts.
 - **TDD Tester** completes when the active feature has at least one test spec and one implementation task.
-- **Reviewer** remains an optional cleanup phase before export.
+- **Reviewer** completes once at least one final review trace exists (this also unlocks the Scaffolder).
+- **Scaffolder** completes when `impl/.plancraft-scaffold.json` is present in the workspace.
+
+### Phase 7: Scaffolder
+
+**Trigger:** `POST /projects/{project_id}/scaffold`
+**Unlock condition:** Reviewer phase must have run at least once (a final trace with `role="review"` exists). Pass `force=true` to bypass in development.
+
+The Scaffolder generates an implementation-ready code skeleton inside the project workspace under `impl/`. A downstream dev team (or autonomous agent) then runs `bootstrap.sh` and fills in the method bodies.
+
+Two-layer generation: a deterministic layer (no LLM) creates the directory tree + static template files (bootstrap.sh, pyproject.toml, requirements.txt, main.py, conftest.py; optional Vite+React frontend). An LLM layer generates Python stub modules and pytest test files from the project's components, contracts, tasks, and test specs. Every method body is `raise NotImplementedError("TODO: TASK-NNN")` so tests fail by construction.
+
+Idempotency: if `impl/` exists with non-generated files (human edits), the endpoint returns HTTP 409 unless `force=true`.
+
+Export: `GET /projects/{id}/export/download?target=impl` bundles the `impl/` tree.
 
 ---
 
@@ -295,7 +321,8 @@ The C4 renderer emits a `workspace.dsl` consumable by the [Structurizr CLI](http
 | Task DAG | `GET /projects/{id}/export/tasks` | JSON — tasks with dependencies, story & spec links |
 | arc42 docs | `GET /projects/{id}/export/arc42` | Single Markdown — full 12-section architecture doc (legacy) |
 | List targets | `GET /projects/{id}/export/targets` | List all registered pluggable exporters (M6) |
-| Target bundle | `GET /projects/{id}/export/download?target=<name>` | Build + validate + zip any registered target (`workspace`, `arc42`, `tasks`, `ba`) |
+| Target bundle | `GET /projects/{id}/export/download?target=<name>` | Build + validate + zip any registered target (`workspace`, `arc42`, `tasks`, `ba`, `impl`) |
+| Scaffold trigger | `POST /projects/{id}/scaffold` | Generate the `impl/` code skeleton (Reviewer must have run; pass `force=true` to override) |
 
 ---
 

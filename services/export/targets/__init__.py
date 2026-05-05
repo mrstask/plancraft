@@ -7,6 +7,7 @@ from __future__ import annotations
 from .arc42_target import Arc42Target
 from .ba_target import BaTarget
 from .base import BuildResult, ExportTarget
+from .impl_target import ImplTarget
 from .tasks_target import TasksTarget
 from .workspace_target import WorkspaceTarget
 
@@ -15,6 +16,7 @@ TARGETS: list[ExportTarget] = [
     TasksTarget(),
     BaTarget(),
     WorkspaceTarget(),
+    ImplTarget(),
 ]
 
 _REGISTRY: dict[str, ExportTarget] = {t.name: t for t in TARGETS}

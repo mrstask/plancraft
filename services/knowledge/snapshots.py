@@ -129,6 +129,8 @@ class SnapshotBuilder(KnowledgeBase):
         pending_ids = await self._get_pending_clarification_ids(project_id)
         counts = await self._get_counts(project_id)
         founder_evaluator_passed = await self._founder_evaluator_passed(project_id)
+        review_has_run = await self._review_has_run(project_id)
+        scaffold_complete = await self._scaffold_complete(project_id)
         prior_features = await self._get_prior_features(project_id)
 
         return KnowledgeSnapshot(
@@ -138,6 +140,8 @@ class SnapshotBuilder(KnowledgeBase):
             mission_problem=mission.problem if mission else None,
             problem_statement=project.description,
             founder_evaluator_passed=founder_evaluator_passed,
+            review_has_run=review_has_run,
+            scaffold_complete=scaffold_complete,
             mvp_story_count=len(project.mvp_story_ids or []),
             mvp_rationale=project.mvp_rationale,
             vision_scope_set=bool(project.business_goals or project.in_scope),
@@ -273,3 +277,28 @@ class SnapshotBuilder(KnowledgeBase):
         )
         trace = r.scalar_one_or_none()
         return bool(trace and (trace.evaluator_score or 0.0) >= settings.evaluator_score_threshold)
+
+    async def _review_has_run(self, project_id: str) -> bool:
+        """Return True if the Reviewer has produced at least one final trace."""
+        r = await self.db.execute(
+            select(RoleExecutionTrace)
+            .where(
+                RoleExecutionTrace.project_id == project_id,
+                RoleExecutionTrace.role == "review",
+                RoleExecutionTrace.final.is_(True),
+            )
+            .limit(1)
+        )
+        return r.scalar_one_or_none() is not None
+
+    async def _scaffold_complete(self, project_id: str) -> bool:
+        """Return True when impl/.plancraft-scaffold.json exists in the workspace."""
+        from pathlib import Path
+        from services.scaffold.tree_builder import SCAFFOLD_MARKER
+        try:
+            project = await self.get_project(project_id)
+            if not project.root_path:
+                return False
+            return (Path(project.root_path) / "impl" / SCAFFOLD_MARKER).exists()
+        except Exception:
+            return False

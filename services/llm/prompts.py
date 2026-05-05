@@ -8,6 +8,7 @@ from roles import (
     FounderRole,
     ProductManagerRole,
     ReviewerRole,
+    ScaffolderRole,
     TDDTesterRole,
 )
 
@@ -18,6 +19,7 @@ ROLE_MAP = {
     "architect": ArchitectRole,
     "tdd": TDDTesterRole,
     "review": ReviewerRole,
+    "scaffolder": ScaffolderRole,
 }
 
 PHASE_TOOL_RULES = {
@@ -71,6 +73,12 @@ PHASE_TOOL_RULES = {
         "- When you find a duplicate artifact -> call delete_* immediately.\n"
         "- When wording needs improvement -> call update_* immediately.\n"
         "- Use the artifact IDs shown in the context exactly as provided.\n"
+    ),
+    "scaffolder": (
+        "- For every component: call create_backend_module() immediately.\n"
+        "- For every test spec: call create_backend_test() immediately.\n"
+        "- If has_frontend=true: call create_frontend_module() and create_frontend_test().\n"
+        "- Do NOT describe a module without calling the tool.\n"
     ),
 }
 

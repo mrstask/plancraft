@@ -44,6 +44,10 @@ class KnowledgeSnapshot(BaseModel):
     # Vision/scope populated flag
     vision_scope_set: bool = False
 
+    # Scaffolder phase
+    scaffold_complete: bool = False
+    review_has_run: bool = False
+
     # Recent items (last 5 of each) for Claude's context
     recent_stories: list[StorySnapshot] = Field(default_factory=list)
     recent_components: list[ComponentSnapshot] = Field(default_factory=list)
@@ -550,6 +554,34 @@ class UpdateTaskArgs(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Scaffolder tool call argument models
+# ---------------------------------------------------------------------------
+
+class CreateBackendModuleArgs(BaseModel):
+    module_name: str = Field(description="snake_case Python module filename without .py")
+    component_id: str = Field(description="The component ID this module implements")
+    content: str = Field(description="Full Python source code for this module")
+
+
+class CreateFrontendModuleArgs(BaseModel):
+    module_name: str = Field(description="PascalCase TS filename without extension")
+    component_id: str = Field(description="The component ID this module implements")
+    content: str = Field(description="Full TypeScript source code for this module")
+
+
+class CreateBackendTestArgs(BaseModel):
+    test_file_name: str = Field(description="test_snake_case filename without .py")
+    spec_id: str = Field(description="The TestSpec ID this test file implements")
+    content: str = Field(description="Full pytest source code for this test file")
+
+
+class CreateFrontendTestArgs(BaseModel):
+    test_file_name: str = Field(description="PascalCase test filename without extension")
+    spec_id: str = Field(description="The TestSpec ID this test file implements")
+    content: str = Field(description="Full vitest/TypeScript source code")
+
+
+# ---------------------------------------------------------------------------
 # Phase flow
 # ---------------------------------------------------------------------------
 
@@ -589,17 +621,20 @@ def compute_phase_status(snapshot: "KnowledgeSnapshot") -> list[PhaseInfo]:
         and snapshot.vision_scope_set
         and len(snapshot.pending_clarification_ids) == 0
     )
-    pm_done   = snapshot.epic_count > 0 and snapshot.mvp_story_count > 0
-    arch_done = snapshot.component_count > 0 and snapshot.decision_count > 0
-    tdd_done  = snapshot.test_spec_count > 0 and snapshot.task_count > 0
+    pm_done       = snapshot.epic_count > 0 and snapshot.mvp_story_count > 0
+    arch_done     = snapshot.component_count > 0 and snapshot.decision_count > 0
+    tdd_done      = snapshot.test_spec_count > 0 and snapshot.task_count > 0
+    review_done   = snapshot.review_has_run
+    scaffold_done = snapshot.scaffold_complete
 
     return [
-        PhaseInfo("founder",   "Founder",          "🚀", unlocked=True,         complete=founder_done),
-        PhaseInfo("ba",        "Business Analyst", "🔍", unlocked=founder_done, complete=ba_done),
-        PhaseInfo("pm",        "Product Manager",  "📋", unlocked=ba_done,      complete=pm_done),
-        PhaseInfo("architect", "Architect",        "🏗️",  unlocked=pm_done,      complete=arch_done),
-        PhaseInfo("tdd",       "TDD Tester",       "✅",  unlocked=arch_done,    complete=tdd_done),
-        PhaseInfo("review",    "Reviewer",         "🔎", unlocked=tdd_done,     complete=False),
+        PhaseInfo("founder",    "Founder",          "🚀", unlocked=True,         complete=founder_done),
+        PhaseInfo("ba",         "Business Analyst", "🔍", unlocked=founder_done, complete=ba_done),
+        PhaseInfo("pm",         "Product Manager",  "📋", unlocked=ba_done,      complete=pm_done),
+        PhaseInfo("architect",  "Architect",        "🏗️",  unlocked=pm_done,      complete=arch_done),
+        PhaseInfo("tdd",        "TDD Tester",       "✅",  unlocked=arch_done,    complete=tdd_done),
+        PhaseInfo("review",     "Reviewer",         "🔎", unlocked=tdd_done,     complete=review_done),
+        PhaseInfo("scaffolder", "Scaffolder",       "🏗",  unlocked=review_done,  complete=scaffold_done),
     ]
 
 
